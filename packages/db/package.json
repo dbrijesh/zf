@@ -1,0 +1,18 @@
+{
+  "name": "@zerovity/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@zerovity/core": "*",
+    "drizzle-orm": "*",
+    "@electric-sql/pglite": "*",
+    "pg": "*",
+    "@aws-sdk/client-s3": "*"
+  }
+}

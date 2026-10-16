@@ -1,0 +1,208 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "gates": {
+      "default": {
+        "questionTimeoutHours": 48,
+        "handoff": {
+          "required": true
+        },
+        "riskOverrides": [],
+        "maxRevisionLoops": 3
+      },
+      "type": "object",
+      "properties": {
+        "specApproval": {
+          "type": "object",
+          "properties": {
+            "when": {
+              "default": "phase_completed",
+              "type": "string",
+              "enum": [
+                "phase_completed"
+              ]
+            },
+            "phase": {
+              "type": "string",
+              "enum": [
+                "INTENT",
+                "SPEC",
+                "BUILD",
+                "VERIFY"
+              ]
+            },
+            "required": {
+              "default": true,
+              "type": "boolean"
+            },
+            "approvers": {
+              "default": {
+                "groups": [],
+                "users": []
+              },
+              "type": "object",
+              "properties": {
+                "groups": {
+                  "default": [],
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "users": {
+                  "default": [],
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
+            "requireReason": {
+              "default": false,
+              "type": "boolean"
+            },
+            "reauthenticate": {
+              "default": false,
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "phase"
+          ],
+          "additionalProperties": false
+        },
+        "questionTimeoutHours": {
+          "default": 48,
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "handoff": {
+          "default": {
+            "required": true
+          },
+          "type": "object",
+          "properties": {
+            "required": {
+              "default": true,
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
+        "riskOverrides": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "if": {
+                "type": "string"
+              },
+              "add": {
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "if",
+              "add"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "maxRevisionLoops": {
+          "default": 3,
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        }
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "when": {
+            "default": "phase_completed",
+            "type": "string",
+            "enum": [
+              "phase_completed"
+            ]
+          },
+          "phase": {
+            "type": "string",
+            "enum": [
+              "INTENT",
+              "SPEC",
+              "BUILD",
+              "VERIFY"
+            ]
+          },
+          "required": {
+            "default": true,
+            "type": "boolean"
+          },
+          "approvers": {
+            "default": {
+              "groups": [],
+              "users": []
+            },
+            "type": "object",
+            "properties": {
+              "groups": {
+                "default": [],
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "users": {
+                "default": [],
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "requireReason": {
+            "default": false,
+            "type": "boolean"
+          },
+          "reauthenticate": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "phase"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "merge": {
+      "default": {
+        "agentsMayMerge": false
+      },
+      "type": "object",
+      "properties": {
+        "agentsMayMerge": {
+          "type": "boolean",
+          "const": false
+        }
+      },
+      "required": [
+        "agentsMayMerge"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "$id": "https://zerovity.dev/schemas/zf/v1alpha1/gates.json",
+  "title": "Zerovity gates (zf/v1alpha1)"
+}

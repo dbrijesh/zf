@@ -1,0 +1,69 @@
+# Zerovity Factory: one `docker compose up` for local and pilot use.
+#   docker compose up --build            # postgres, minio, api (serves the web app), worker
+#   docker compose --profile demo up     # the same, seeded with the demo factory driven by the offline harness
+# Build the sandbox image once:  docker build -t zerovity-runner-base:latest docker/runner-base
+services:
+  postgres:
+    image: postgres:16
+    environment: { POSTGRES_USER: zerovity, POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-zerovity}, POSTGRES_DB: zerovity }
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U zerovity"], interval: 5s, timeout: 3s, retries: 10 }
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment: { MINIO_ROOT_USER: ${S3_ACCESS_KEY:-zerovity}, MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-zerovity-secret} }
+    volumes: [miniodata:/data]
+    ports: ["9001:9001"]
+    healthcheck: { test: ["CMD", "mc", "ready", "local"], interval: 5s, timeout: 3s, retries: 10 }
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on: { minio: { condition: service_healthy } }
+    entrypoint: ["/bin/sh", "-c", "mc alias set z http://minio:9000 ${S3_ACCESS_KEY:-zerovity} ${S3_SECRET_KEY:-zerovity-secret} && mc mb -p z/zerovity"]
+
+  api:
+    build: { context: ., dockerfile: docker/Dockerfile }
+    depends_on: { postgres: { condition: service_healthy }, minio-init: { condition: service_completed_successfully } }
+    ports: ["8787:8787"]
+    environment: &env
+      DATABASE_URL: postgres://zerovity:${POSTGRES_PASSWORD:-zerovity}@postgres:5432/zerovity
+      ZF_MASTER_KEY: ${ZF_MASTER_KEY:?set ZF_MASTER_KEY (openssl rand -base64 32)}
+      ZF_SESSION_SECRET: ${ZF_SESSION_SECRET:-}
+      ZF_PUBLIC_URL: ${ZF_PUBLIC_URL:-http://localhost:8787}
+      ZF_EMBED_WORKER: "0"
+      ZF_DEV_LOGIN: ${ZF_DEV_LOGIN:-0}
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_ADMIN_GROUPS: ${OIDC_ADMIN_GROUPS:-}
+      OIDC_APPROVER_GROUPS: ${OIDC_APPROVER_GROUPS:-}
+      S3_BUCKET: zerovity
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-zerovity}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-zerovity-secret}
+      ZF_ADVISOR_API_KEY: ${ZF_ADVISOR_API_KEY:-}
+      ZF_FORCE_HARNESS: ${ZF_FORCE_HARNESS:-}
+    volumes: [zfdata:/data]
+
+  worker:
+    build: { context: ., dockerfile: docker/Dockerfile }
+    command: ["node_modules/.bin/tsx", "apps/worker/src/main.ts"]
+    depends_on: { api: { condition: service_healthy } }
+    user: root   # needs the Docker socket; the sandboxes it starts are non-root with no socket
+    environment:
+      <<: *env
+      ZF_SANDBOX: ${ZF_SANDBOX:-docker}
+      ZF_DATA_DIR: /data
+      ZF_HOST_DATA_DIR: ${ZF_HOST_DATA_DIR:-/var/lib/zerovity}   # the same folder as seen by the Docker host (bind mounts for sandboxes)
+      ZF_SANDBOX_NETWORK: ${ZF_SANDBOX_NETWORK:-}
+    volumes: ["/var/run/docker.sock:/var/run/docker.sock", "${ZF_HOST_DATA_DIR:-/var/lib/zerovity}:/data"]
+
+  demo-seed:
+    profiles: [demo]
+    build: { context: ., dockerfile: docker/Dockerfile }
+    command: ["node_modules/.bin/tsx", "apps/api/src/seed-cli.ts", "--live"]
+    depends_on: { api: { condition: service_healthy } }
+    environment: { <<: *env, ZF_FORCE_HARNESS: fake }
+
+volumes: { pgdata: {}, miniodata: {}, zfdata: {} }

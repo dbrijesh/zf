@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "description": {
+      "type": "string"
+    },
+    "image": {
+      "type": "string"
+    },
+    "setupCommands": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "resources": {
+      "default": {
+        "cpus": 2,
+        "memoryGb": 4
+      },
+      "type": "object",
+      "properties": {
+        "cpus": {
+          "default": 2,
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "memoryGb": {
+          "default": 4,
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "network": {
+      "default": {
+        "egress": "allowlist",
+        "allow": []
+      },
+      "type": "object",
+      "properties": {
+        "egress": {
+          "default": "allowlist",
+          "type": "string",
+          "enum": [
+            "allowlist",
+            "open",
+            "none"
+          ]
+        },
+        "allow": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "image"
+  ],
+  "additionalProperties": false,
+  "$id": "https://zerovity.dev/schemas/zf/v1alpha1/runner.json",
+  "title": "Zerovity runner (zf/v1alpha1)"
+}

@@ -1,0 +1,31 @@
+{
+    "name":  "@zerovity/cli",
+    "version":  "0.1.0",
+    "private":  true,
+    "type":  "module",
+    "dependencies":  {
+                         "@zerovity/core":  "*",
+                         "@zerovity/definition":  "*",
+                         "@zerovity/skills":  "*",
+                         "@zerovity/audit":  "*",
+                         "@zerovity/harness-common":  "*",
+                         "@zerovity/harness-claude-code":  "*",
+                         "@zerovity/harness-codex":  "*",
+                         "@zerovity/harness-copilot":  "*",
+                         "@zerovity/orchestrator":  "*",
+                         "@zerovity/db":  "*",
+                         "@zerovity/context":  "*",
+                         "commander":  "*",
+                         "ink":  "*",
+                         "react":  "*",
+                         "yaml":  "*",
+                         "@zerovity/worker":  "*",
+                         "@zerovity/harness":  "*"
+                     },
+    "exports":  {
+                    ".":  "./src/main.ts"
+                },
+    "bin":  {
+                "zf":  "./bin/zf.mjs"
+            }
+}

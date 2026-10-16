@@ -1,0 +1,7 @@
+{"type":"session.start","data":{"sessionId":"c0ffee00-1111-2222-3333-444455556666","selectedModel":"claude-sonnet-5-5"}}
+{"type":"tool.execution_start","data":{"toolCallId":"call_1","toolName":"create","arguments":{"path":"/workspace/hello.txt","file_text":"hi"}}}
+{"type":"tool.execution_complete","data":{"toolCallId":"call_1","success":true,"result":{"content":"Created file /workspace/hello.txt"}}}
+{"type":"tool.execution_start","data":{"toolCallId":"call_2","toolName":"bash","arguments":{"command":"git status --short"}}}
+{"type":"tool.execution_complete","data":{"toolCallId":"call_2","success":true,"result":{"content":"?? hello.txt"}}}
+{"type":"assistant.message","data":{"messageId":"m1","content":"done"}}
+{"type":"result","sessionId":"c0ffee00-1111-2222-3333-444455556666","exitCode":0,"usage":{"premiumRequests":1,"inputTokens":9100,"outputTokens":140}}

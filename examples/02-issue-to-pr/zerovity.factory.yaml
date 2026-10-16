@@ -1,0 +1,50 @@
+schemaVersion: zf/v1alpha1
+name: payments-factory
+alias: payments
+description: Handles approved work for the payments service
+shortIdPrefix: ZF
+repositories:
+  - forge: github
+    owner: acme
+    name: payments-service
+    defaultBranch: main
+  - forge: github
+    owner: acme
+    name: ledger
+    defaultBranch: main
+packs:
+  - name: zerovity-core
+    version: ^1.0.0
+agentDefaults:
+  harness:
+    type: claude-code
+    model: claude-sonnet-5-5
+    reasoning: medium
+  runner: node-default
+  idleTimeoutMinutes: 10
+  maxRunMinutes: 60
+  budget:
+    maxTokensPerRun: 2000000
+    maxCostPerWorkItemUsd: 25
+limits:
+  maxConcurrentRuns: 4
+  maxRunsPerRepo: 2
+gateway:
+  anthropicBaseUrl: ${secret:ZEROVITY_GATEWAY_ANTHROPIC_URL}
+  openaiBaseUrl: ${secret:ZEROVITY_GATEWAY_OPENAI_URL}
+secrets: [GITHUB_APP_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY, JIRA_MCP_TOKEN, ZEROVITY_GATEWAY_ANTHROPIC_URL, ZEROVITY_GATEWAY_OPENAI_URL]
+mcpServers:
+  jira:
+    url: https://mcp.example.com/jira
+    headers: { Authorization: "Bearer ${secret:JIRA_MCP_TOKEN}" }
+agentOverrides:
+  zerovity-verifier:
+    mcpServers: [jira]
+integrations:
+  jira:
+    - connection: acme-jira
+      project: PAY
+      label: zerovity
+      statusMap: { AWAITING_HANDOFF: In Review }
+  github:
+    triggerLabel: zerovity

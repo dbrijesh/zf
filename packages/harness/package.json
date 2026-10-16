@@ -1,0 +1,16 @@
+{
+  "name": "@zerovity/harness",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "main": "./src/index.ts",
+  "dependencies": {
+    "@zerovity/core": "*",
+    "@zerovity/harness-common": "*",
+    "@zerovity/harness-claude-code": "*",
+    "@zerovity/harness-codex": "*",
+    "@zerovity/harness-copilot": "*",
+    "@zerovity/harness-fake": "*"
+  }
+}

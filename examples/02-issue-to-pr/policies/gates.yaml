@@ -1,0 +1,17 @@
+gates:
+  specApproval:
+    when: phase_completed
+    phase: SPEC
+    required: true
+    approvers: { groups: [tech-leads] }
+    requireReason: false
+  questionTimeoutHours: 48
+  handoff:
+    required: true
+  riskOverrides:
+    - if: triage.risk == "high"
+      add: [buildApproval]
+    - if: paths.touched matches "migrations/**"
+      add: [dbReview]
+merge:
+  agentsMayMerge: false

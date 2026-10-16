@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string"
+    },
+    "layer": {
+      "default": "factory",
+      "type": "string",
+      "enum": [
+        "org",
+        "factory",
+        "repo",
+        "workItem",
+        "phase"
+      ]
+    },
+    "kind": {
+      "default": "note",
+      "type": "string",
+      "enum": [
+        "note",
+        "file",
+        "url",
+        "glossary",
+        "adr",
+        "repoPointer",
+        "ticket"
+      ]
+    },
+    "tags": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "appliesTo": {
+      "default": {
+        "phases": [],
+        "agents": []
+      },
+      "type": "object",
+      "properties": {
+        "phases": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "INTENT",
+              "SPEC",
+              "BUILD",
+              "VERIFY",
+              "SHIP",
+              "CUSTOM"
+            ]
+          }
+        },
+        "agents": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "priority": {
+      "default": "always",
+      "type": "string",
+      "enum": [
+        "always",
+        "relevant",
+        "on_request"
+      ]
+    },
+    "term": {
+      "type": "string"
+    },
+    "definition": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "decision": {
+      "type": "string"
+    },
+    "repo": {
+      "type": "string"
+    },
+    "glob": {
+      "type": "string"
+    },
+    "body": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "$id": "https://zerovity.dev/schemas/zf/v1alpha1/context.json",
+  "title": "Zerovity context (zf/v1alpha1)"
+}

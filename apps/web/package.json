@@ -1,0 +1,29 @@
+{
+    "name":  "@zerovity/web",
+    "version":  "0.1.0",
+    "private":  true,
+    "type":  "module",
+    "dependencies":  {
+                         "@fontsource-variable/space-grotesk":  "^5.3.0",
+                         "@fontsource/jetbrains-mono":  "^5.3.0",
+                         "@monaco-editor/react":  "*",
+                         "@tanstack/react-query":  "*",
+                         "@tanstack/react-router":  "*",
+                         "@zerovity/core":  "*",
+                         "@zerovity/ui-kit":  "*",
+                         "diff":  "*",
+                         "dompurify":  "*",
+                         "marked":  "*",
+                         "monaco-editor":  "0.52.2",
+                         "monaco-yaml":  "^5.5.1",
+                         "motion":  "*",
+                         "react":  "*",
+                         "react-dom":  "*",
+                         "zod":  "*"
+                     },
+    "scripts":  {
+                    "dev":  "vite",
+                    "build":  "vite build",
+                    "preview":  "vite preview"
+                }
+}

@@ -1,0 +1,27 @@
+{
+    "name":  "@zerovity/worker",
+    "version":  "0.1.0",
+    "private":  true,
+    "type":  "module",
+    "dependencies":  {
+                         "@zerovity/core":  "*",
+                         "@zerovity/db":  "*",
+                         "@zerovity/definition":  "*",
+                         "@zerovity/skills":  "*",
+                         "@zerovity/context":  "*",
+                         "@zerovity/orchestrator":  "*",
+                         "@zerovity/audit":  "*",
+                         "@zerovity/harness-common":  "*",
+                         "@zerovity/harness-claude-code":  "*",
+                         "@zerovity/harness-codex":  "*",
+                         "@zerovity/harness-copilot":  "*",
+                         "@zerovity/forge-github":  "*",
+                         "@zerovity/forge-common":  "*",
+                         "dockerode":  "*",
+                         "zod":  "*"
+                     },
+    "exports":  {
+                    ".":  "./src/index.ts"
+                },
+    "main":  "./src/index.ts"
+}

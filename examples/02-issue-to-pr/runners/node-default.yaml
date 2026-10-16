@@ -1,0 +1,7 @@
+description: Node 20 with pnpm
+image: ghcr.io/hexaware/zerovity-runner-node:20
+setupCommands: [corepack enable, pnpm install --frozen-lockfile]
+resources: { cpus: 4, memoryGb: 8 }
+network:
+  egress: allowlist
+  allow: [registry.npmjs.org, github.com, api.anthropic.com, api.openai.com, api.githubcopilot.com]

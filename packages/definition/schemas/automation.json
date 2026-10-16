@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "enabled": {
+      "default": true,
+      "type": "boolean"
+    },
+    "agent": {
+      "type": "string"
+    },
+    "triggers": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "provider": {
+                "type": "string",
+                "const": "github"
+              },
+              "event": {
+                "type": "string",
+                "enum": [
+                  "issue_labeled",
+                  "issue_commented",
+                  "issue_mentioned",
+                  "pull_request_commented",
+                  "check_suite_completed"
+                ]
+              },
+              "filter": {
+                "type": "object",
+                "properties": {
+                  "repos": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "labels": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "provider",
+              "event"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "provider": {
+                "type": "string",
+                "const": "schedule"
+              },
+              "cron": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "provider",
+              "cron"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "provider": {
+                "type": "string",
+                "const": "webhook"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "provider"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "provider": {
+                "type": "string",
+                "const": "factory"
+              },
+              "event": {
+                "type": "string",
+                "enum": [
+                  "work_item_phase_changed"
+                ]
+              },
+              "filter": {
+                "type": "object",
+                "properties": {
+                  "phase": {
+                    "type": "string",
+                    "enum": [
+                      "INTENT",
+                      "SPEC",
+                      "BUILD",
+                      "VERIFY",
+                      "SHIP",
+                      "CUSTOM"
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "provider",
+              "event"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    }
+  },
+  "required": [
+    "agent",
+    "triggers"
+  ],
+  "additionalProperties": false,
+  "$id": "https://zerovity.dev/schemas/zf/v1alpha1/automation.json",
+  "title": "Zerovity automation (zf/v1alpha1)"
+}

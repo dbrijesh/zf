@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "description": {
+      "type": "string"
+    },
+    "labels": {
+      "default": [
+        "pass",
+        "fail"
+      ],
+      "minItems": 2,
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "passLabels": {
+      "default": [
+        "pass"
+      ],
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "sampling": {
+      "default": 0.2,
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "appliesTo": {
+      "default": {
+        "phases": [],
+        "agents": []
+      },
+      "type": "object",
+      "properties": {
+        "phases": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "INTENT",
+              "SPEC",
+              "BUILD",
+              "VERIFY",
+              "SHIP",
+              "CUSTOM"
+            ]
+          }
+        },
+        "agents": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "harness": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "claude-code",
+            "codex",
+            "copilot",
+            "fake"
+          ]
+        },
+        "model": {
+          "type": "string"
+        },
+        "reasoning": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ]
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "description"
+  ],
+  "additionalProperties": false,
+  "$id": "https://zerovity.dev/schemas/zf/v1alpha1/scorer.json",
+  "title": "Zerovity scorer (zf/v1alpha1)"
+}

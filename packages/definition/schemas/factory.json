@@ -1,0 +1,420 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "zf/v1alpha1"
+    },
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "alias": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "description": {
+      "type": "string"
+    },
+    "shortIdPrefix": {
+      "type": "string",
+      "pattern": "^[A-Z]{2,6}$"
+    },
+    "repositories": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "forge": {
+            "default": "github",
+            "type": "string",
+            "enum": [
+              "github",
+              "gitlab",
+              "azuredevops",
+              "bitbucket"
+            ]
+          },
+          "owner": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "defaultBranch": {
+            "default": "main",
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "owner",
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "packs": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "default": "*",
+            "type": "string"
+          },
+          "include": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "agentDefaults": {
+      "default": {},
+      "type": "object",
+      "properties": {
+        "harness": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "claude-code",
+                "codex",
+                "copilot",
+                "fake"
+              ]
+            },
+            "model": {
+              "type": "string"
+            },
+            "reasoning": {
+              "type": "string",
+              "enum": [
+                "low",
+                "medium",
+                "high"
+              ]
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        "runner": {
+          "type": "string"
+        },
+        "idleTimeoutMinutes": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "maxRunMinutes": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "budget": {
+          "type": "object",
+          "properties": {
+            "maxTokensPerRun": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "maxCostPerWorkItemUsd": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "limits": {
+      "type": "object",
+      "properties": {
+        "maxConcurrentRuns": {
+          "default": 4,
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "maxRunsPerRepo": {
+          "default": 2,
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "additionalProperties": false
+    },
+    "gateway": {
+      "type": "object",
+      "properties": {
+        "anthropicBaseUrl": {
+          "type": "string"
+        },
+        "openaiBaseUrl": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "secrets": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Z][A-Z0-9_]*$"
+      }
+    },
+    "mcpServers": {
+      "default": {},
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]*$"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string"
+          },
+          "command": {
+            "type": "string"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "headers": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "env": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "agentOverrides": {
+      "default": {},
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string",
+            "enum": [
+              "INTENT",
+              "SPEC",
+              "BUILD",
+              "VERIFY",
+              "SHIP",
+              "CUSTOM"
+            ]
+          },
+          "role": {
+            "type": "string"
+          },
+          "skills": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "contextScopes": {
+            "default": [
+              "org",
+              "factory",
+              "repo",
+              "workItem"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "org",
+                "factory",
+                "repo",
+                "workItem",
+                "phase"
+              ]
+            }
+          },
+          "harness": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "claude-code",
+                  "codex",
+                  "copilot",
+                  "fake"
+                ]
+              },
+              "model": {
+                "type": "string"
+              },
+              "reasoning": {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high"
+                ]
+              }
+            },
+            "required": [
+              "type"
+            ],
+            "additionalProperties": false
+          },
+          "outputs": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "spawnableBy": {
+            "default": [
+              "foreman"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "mcpServers": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "credential": {
+            "type": "string"
+          },
+          "runner": {
+            "type": "string"
+          },
+          "secrets": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "maxRunMinutes": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "contextTokenBudget": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "integrations": {
+      "type": "object",
+      "properties": {
+        "jira": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "connection": {
+                "type": "string"
+              },
+              "project": {
+                "type": "string"
+              },
+              "label": {
+                "default": "zerovity",
+                "type": "string"
+              },
+              "statusMap": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "connection",
+              "project"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "github": {
+          "type": "object",
+          "properties": {
+            "connection": {
+              "type": "string"
+            },
+            "triggerLabel": {
+              "default": "zerovity",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "name"
+  ],
+  "additionalProperties": false,
+  "$id": "https://zerovity.dev/schemas/zf/v1alpha1/factory.json",
+  "title": "Zerovity factory (zf/v1alpha1)"
+}

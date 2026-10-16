@@ -1,0 +1,6 @@
+term: Payout
+definition: Money sent from Acme to a merchant bank account.
+kind: glossary
+layer: factory
+title: "Glossary: Payout"
+priority: relevant

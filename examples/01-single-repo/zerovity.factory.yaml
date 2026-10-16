@@ -1,0 +1,22 @@
+schemaVersion: zf/v1alpha1
+name: single-repo
+alias: single
+description: Smallest useful factory - one repository, the default Zerovity team
+repositories:
+  - forge: github
+    owner: acme
+    name: payments-service
+    defaultBranch: main
+packs:
+  - name: zerovity-core
+    version: ^1.0.0
+agentDefaults:
+  harness:
+    type: claude-code
+    model: claude-sonnet-5-5
+  runner: default
+  maxRunMinutes: 60
+  budget:
+    maxTokensPerRun: 2000000
+    maxCostPerWorkItemUsd: 25
+secrets: [GITHUB_APP_KEY, ANTHROPIC_API_KEY]

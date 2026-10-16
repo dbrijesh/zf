@@ -1,0 +1,24 @@
+name: zerovity-core
+version: 1.0.0
+description: Default Zerovity team - researcher, spec-writer, executor, verifier, shipper - and the light, reusable skills they load.
+skills:
+  - zerovity-triage-report
+  - zerovity-question-asking
+  - zerovity-repro
+  - zerovity-spec-format
+  - zerovity-acceptance-criteria
+  - zerovity-adr-lite
+  - zerovity-tdd-loop
+  - zerovity-repo-validation
+  - zerovity-evidence-capture
+  - zerovity-review-checklist
+  - zerovity-security-scan
+  - zerovity-test-gap
+  - zerovity-pr-handoff
+  - zerovity-evidence-bundle
+agents:
+  - zerovity-researcher
+  - zerovity-spec-writer
+  - zerovity-executor
+  - zerovity-verifier
+  - zerovity-shipper
