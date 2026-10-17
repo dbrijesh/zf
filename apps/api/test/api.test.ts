@@ -478,3 +478,13 @@ describe('inbound webhooks (GitHub and Jira signatures, tokens)', () => {
     await call(devCookie, 'POST', `/work-items/${good.json().workItemId}/cancel`);
   });
 });
+
+// Regression: the connection Test button (a bodiless POST) answered "415 Unsupported Media Type" when the client sent a non-JSON content type.
+describe('bodiless action requests', () => {
+  it('accept any content type and an empty body', async () => {
+    for (const headers of [{}, { 'content-type': 'application/x-www-form-urlencoded' }, { 'content-type': 'text/plain' }]) {
+      const r = await app.inject({ method: 'POST', url: '/api/v1/auth/logout', headers, payload: '' });
+      expect(r.statusCode, JSON.stringify(headers)).toBe(200);
+    }
+  });
+});

@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { hostAllowed, startEgressProxy, LocalSandbox, baseEnv } from '../src/sandbox';
-import { gitAvailable, prepareWorkspace, commitAll, diffAgainst, changedFiles, humanCommits, git } from '../src/git';
+import { gitAvailable, prepareWorkspace, commitAll, diffAgainst, changedFiles, humanCommits, git, pushBranch } from '../src/git';
 
 describe('egress allowlist', () => {
   it('matches exact hosts and subdomains only', () => {
@@ -76,9 +76,26 @@ describe.skipIf(!gitAvailable())('git workspace (needs git installed)', () => {
     expect(await changedFiles(ws.dir, ws.baseSha!)).toEqual(['a.txt']);
     expect(await diffAgainst(ws.dir, ws.baseSha!)).toContain('+hello');
     expect(await humanCommits(ws.dir, ws.baseSha!)).toBe(0);
-    await git(ws.dir, ['-c', 'user.name=Bob', '-c', 'user.email=bob@example.com', 'commit', '--allow-empty', '-m', 'human']);
+    await git(ws.dir, ['commit', '--allow-empty', '-m', 'human'], { env: { GIT_AUTHOR_NAME: 'Bob', GIT_AUTHOR_EMAIL: 'bob@example.com', GIT_COMMITTER_NAME: 'Bob', GIT_COMMITTER_EMAIL: 'bob@example.com' } });
     expect(await humanCommits(ws.dir, ws.baseSha!)).toBe(1);
     expect((await commitAll(ws.dir, 'nothing')).committed).toBe(false);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('pushes to a URL remote (no tracking ref) the first time and again after more commits', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'zf-push-'));
+    const bare = path.join(dir, 'remote.git');
+    fs.mkdirSync(bare);
+    await git(bare, ['init', '--bare', '-b', 'main']);
+    const ws = await prepareWorkspace({ dir: path.join(dir, 'work'), branch: 'zerovity/zf-2-x', defaultBranch: 'main', exclude: [] });
+    fs.writeFileSync(path.join(ws.dir, 'a.txt'), '1');
+    await commitAll(ws.dir, 'one');
+    expect(await pushBranch(ws.dir, 'zerovity/zf-2-x', bare)).toBe(true);
+    fs.writeFileSync(path.join(ws.dir, 'a.txt'), '2');
+    await commitAll(ws.dir, 'two');
+    expect(await pushBranch(ws.dir, 'zerovity/zf-2-x', bare)).toBe(true);
+    const head = (await git(bare, ['rev-parse', 'refs/heads/zerovity/zf-2-x'])).stdout.trim();
+    expect(head).toBe((await git(ws.dir, ['rev-parse', 'HEAD'])).stdout.trim());
     fs.rmSync(dir, { recursive: true, force: true });
   });
 });

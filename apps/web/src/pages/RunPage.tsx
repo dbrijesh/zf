@@ -4,6 +4,7 @@ import { Btn, Chip, HARNESS_LABEL, Icon, PhaseChip, Spinner, fmtMoney, fmtTokens
 import { api, downloadUrl, useAct, useApi, type Run, type WorkItem } from '../api';
 import { toast, toastError, useApp } from '../state';
 import { Markdown } from '../ui/Markdown';
+import { fmtElapsed, pendingCalls } from '../lib/pending';
 
 interface Ev { seq: number; ts: string; kind: string; [k: string]: unknown }
 interface RunState { status: string; tokensIn: number; tokensOut: number; tokensCached: number; costUsd: number; eventCount: number; sessionId: string | null; exitReason: string | null }
@@ -38,6 +39,10 @@ export function RunPage() {
   const r = base?.run;
   const st = live?.status ?? r?.status ?? 'queued';
   const running = st === 'running' || st === 'queued';
+  // what the agent is in the middle of: the harness only reports a tool call's result when it finishes, so a long command is silent
+  const open = useMemo(() => (running ? pendingCalls(events) : []), [events, running]);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => { if (!open.length) return; setNow(Date.now()); const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, [open.length]);
   const rows = useMemo(() => events.filter((e) => filter === 'all' ? true : filter === 'messages' ? e.kind === 'message.assistant' || e.kind === 'system.followup' : filter === 'commands' ? e.kind === 'command.run' : e.kind === 'file.changed'), [events, filter]);
   const tin = live?.tokensIn ?? r?.tokensIn ?? 0, tout = live?.tokensOut ?? r?.tokensOut ?? 0, cost = live?.costUsd ?? r?.costUsd ?? 0;
   if (!r) return <div className="pageload"><Spinner /></div>;
@@ -56,6 +61,14 @@ export function RunPage() {
         {r.contextBundleHash && <span title="The exact context this agent was given">context <Link to="/items/$id" params={{ id: r.workItemId }} search={{ tab: 'context' } as never}>{r.contextBundleHash.slice(0, 10)}</Link></span>}
         {(live?.sessionId ?? r.sessionId) && <span title="Harness session id">session <b>{(live?.sessionId ?? r.sessionId)!.slice(0, 12)}</b></span>}
       </div>
+      {open.length > 0 && (
+        <div className="nowrunning mono" role="status" aria-live="off" title="This step has started and has not returned yet; output appears when it finishes">
+          <i className="pulse" aria-hidden="true" />
+          <span className="nr-label">running: <code>{open[0].label}</code></span>
+          <b>{fmtElapsed(now - Date.parse(open[0].since))}</b>
+          {open.length > 1 && <span className="nr-more">+{open.length - 1} more</span>}
+        </div>
+      )}
       <div className="runfilters"><div className="chips">{(['all', 'messages', 'commands', 'files'] as const).map((f) => <button key={f} className={`chip link${filter === f ? ' on' : ''}`} onClick={() => setFilter(f)}>{f}</button>)}</div>
         <label className="chk"><input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} />Follow</label></div>
       <div className="events" ref={box} onScroll={(e) => { const el = e.currentTarget; if (follow && el.scrollHeight - el.scrollTop - el.clientHeight > 80) setFollow(false); }}>

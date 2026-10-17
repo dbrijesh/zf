@@ -133,7 +133,8 @@ export async function studioRoutes(app0: FastifyInstance, ctx: AppCtx) {
     const a = await s.defs.getActive(f.id);
     if (!a) throw notFound('Definition');
     const { scope } = req.query;
-    const files = scope === 'factory' ? a.sources.factory[req.params.name] : scope.startsWith('agent:') ? a.sources.agent[scope.slice(6)]?.[req.params.name] : a.sources.packs.find((p) => scope === `pack:${p.manifest.name}`)?.skills[req.params.name];
+    // a pack skill is addressed as "pack:<pack name>"; a bare "pack" means the first pack that has it
+    const files = scope === 'factory' ? a.sources.factory[req.params.name] : scope.startsWith('agent:') ? a.sources.agent[scope.slice(6)]?.[req.params.name] : a.sources.packs.find((p) => (scope === 'pack' ? !!p.skills[req.params.name] : scope === `pack:${p.manifest.name}`))?.skills[req.params.name];
     if (!files) throw notFound('Skill', req.params.name);
     return { name: req.params.name, scope, files, lint: lint(req.params.name, files, `${scope}/${req.params.name}`), editable: !scope.startsWith('pack:') };
   });

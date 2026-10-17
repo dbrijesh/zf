@@ -120,7 +120,8 @@ export class DefinitionService {
     await this.db.insert(t.definitionVersions).values({ id, factoryId, commit, seq, files: work, filesHash: hash, message: o.message ?? '', valid, issues: v.issues as unknown[], appliedAt: valid ? new Date() : null, appliedBy: valid ? o.by : null });
     await appendAudit(this.db, { chain: factoryId, factoryId, actor: o.by, action: valid ? 'definition.applied' : 'definition.rejected', subject: commit, payload: { filesHash: hash, message: o.message ?? '', errors: v.issues.filter((i) => i.severity === 'error').length } });
     if (!valid) return { ok: false, versionId: id, commit, issues: v.issues, applied: false };
-    await this.db.update(t.factories).set({ definitionCommit: commit, updatedAt: new Date() }).where(eq(t.factories.id, factoryId));
+    // the definition owns the factory's display name and alias (the short-id prefix is left alone: existing items use it)
+    await this.db.update(t.factories).set({ definitionCommit: commit, name: v.definition!.factory.name, alias: v.definition!.factory.alias ?? null, updatedAt: new Date() }).where(eq(t.factories.id, factoryId));
     await this.syncRepositories(factoryId, v.definition!);
     this.cache.delete(factoryId);
     const active = await this.getActive(factoryId);
@@ -173,7 +174,12 @@ export class DefinitionService {
     for (const a of Object.values(def.agents)) agents.set(a.name, { name: a.name, source: 'factory', fm: a.fm, body: a.body });
     for (const [name, ov] of Object.entries(def.factory.agentOverrides)) {
       const a = agents.get(name);
-      if (a) agents.set(name, { ...a, fm: { ...a.fm, ...stripUndefined(ov), harness: ov.harness ? { ...a.fm.harness, ...ov.harness } as AgentFrontmatter['harness'] : a.fm.harness } });
+      if (!a) continue;
+      // Switching harness type must not keep the old harness's model or reasoning level (e.g. gpt-5-codex on Claude Code):
+      // they fall back to the factory's agentDefaults unless the override sets them.
+      const switched = !!ov.harness?.type && ov.harness.type !== a.fm.harness?.type;
+      const base = switched ? { type: a.fm.harness?.type } : a.fm.harness;
+      agents.set(name, { ...a, fm: { ...a.fm, ...stripUndefined(ov), harness: ov.harness ? { ...base, ...ov.harness } as AgentFrontmatter['harness'] : a.fm.harness } });
     }
     const factorySkills: Record<string, SkillFiles> = {};
     const agentSkills: Record<string, Record<string, SkillFiles>> = {};

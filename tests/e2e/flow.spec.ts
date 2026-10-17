@@ -150,3 +150,25 @@ test('accessibility basics: landmarks, focusable tokens, labelled controls', asy
   await page.keyboard.press('Enter');
   await expect(page.getByRole('complementary', { name: 'Work item' })).toBeVisible();
 });
+
+test('a command that has started but not returned shows what is running and for how long', async ({ page }) => {
+  await login(page, 'Org admin');
+  const factories = (await (await page.request.get('/api/v1/factories')).json()) as Array<{ id: string }>;
+  const runs = (await (await page.request.get(`/api/v1/runs?factoryId=${factories[0].id}&limit=1`)).json()) as Array<{ id: string }>;
+  const ts = new Date(Date.now() - 125_000).toISOString();
+  const sse = (name: string, data: unknown, id?: number) => `${id ? `id: ${id}\n` : ''}event: ${name}\ndata: ${JSON.stringify(data)}\n\n`;
+  // one finished call, then a shell command that has been running for about two minutes with no result yet
+  await page.route(`**/api/v1/runs/${runs[0].id}/stream*`, (route) => route.fulfill({
+    status: 200, contentType: 'text/event-stream',
+    body: sse('event', { seq: 1, ts, kind: 'tool.call', id: 'a', tool: 'Read', input: { file_path: 'README.md' } }, 1) + sse('event', { seq: 2, ts, kind: 'tool.result', id: 'a', ok: true, summary: 'ok' }, 2)
+      + sse('event', { seq: 3, ts, kind: 'tool.call', id: 'b', tool: 'Bash', input: { command: 'npm --prefix frontend ci --no-audit' } }, 3)
+      + sse('run', { status: 'running', tokensIn: 1, tokensOut: 1, tokensCached: 0, costUsd: 0.01, eventCount: 3, sessionId: null, exitReason: null }),
+  }));
+  await page.goto(`/runs/${runs[0].id}`);
+  const nr = page.getByRole('status').filter({ hasText: 'running:' });
+  await expect(nr).toBeVisible();
+  await expect(nr).toContainText('npm --prefix frontend ci --no-audit');
+  await expect(nr).toContainText(/2m \d\ds/);
+  await expect(nr).not.toContainText('README.md'); // the finished call is not shown
+  await nr.screenshot({ path: 'test-results/nowrunning.png' });
+});

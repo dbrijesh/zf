@@ -94,7 +94,11 @@ export async function commitAll(dir: string, message: string): Promise<{ committ
 export async function pushBranch(dir: string, branch: string, pushUrl?: string): Promise<boolean> {
   const hasRemote = (await git(dir, ['remote'], { allowFail: true })).stdout.trim().length > 0;
   if (!hasRemote && !pushUrl) return false;
-  await git(dir, ['push', pushUrl ?? 'origin', `${branch}:${branch}`, '--force-with-lease'], { allowFail: false });
+  // Lease against what the remote has right now. A bare --force-with-lease needs a remote-tracking ref, which a push to a
+  // token URL does not have, and then always fails with "stale info". Someone else's later push still makes this fail.
+  const target = pushUrl ?? 'origin';
+  const remote = (await git(dir, ['ls-remote', target, `refs/heads/${branch}`], { allowFail: true })).stdout.trim().split(/\s+/)[0] ?? '';
+  await git(dir, ['push', target, `${branch}:refs/heads/${branch}`, `--force-with-lease=refs/heads/${branch}:${remote}`], { allowFail: false });
   return true;
 }
 

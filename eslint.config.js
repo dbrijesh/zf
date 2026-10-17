@@ -3,7 +3,7 @@ import tseslint from 'typescript-eslint';
 import hooks from 'eslint-plugin-react-hooks';
 
 export default tseslint.config(
-  { ignores: ['**/node_modules/**', '**/dist/**', '.data/**', 'drizzle/**', '**/drizzle/**', '_reference/**', 'test-results/**', 'playwright-report/**', '**/*.mjs', 'examples/**', 'packs/**'] },
+  { ignores: ['**/node_modules/**', '**/dist/**', '.data/**', '.data-live/**','drizzle/**', '**/drizzle/**', '_reference/**', 'test-results/**', 'playwright-report/**', '**/*.mjs', 'examples/**', 'packs/**'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

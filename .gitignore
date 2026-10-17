@@ -6,3 +6,4 @@ playwright-report/
 .env
 *.tgz
 .zerovity/
+.data-live/

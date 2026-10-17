@@ -54,6 +54,9 @@ export async function buildApp(o: BuildOptions): Promise<{ app: FastifyInstance;
   app.setSerializerCompiler(serializerCompiler);
   await app.register(cookie);
   await app.register(multipart, { limits: { fileSize: 25 * 1024 * 1024, files: 1 } });
+  // Action endpoints (test, rotate, retry...) take no body, but clients and proxies still attach odd content types to them:
+  // accept any other content type and treat the body as absent rather than answering 415.
+  app.addContentTypeParser('*', { parseAs: 'buffer', bodyLimit: 1024 * 1024 }, (_req, _body, done) => done(null, undefined));
   if (cfg.cors?.length) await app.register(cors, { origin: cfg.cors, credentials: true });
   await app.register(swagger, { openapi: { info: { title: 'Zerovity Factory API', version: cfg.version, description: 'Versioned REST API. Authenticate with a session cookie or `Authorization: Bearer zfp_...`.' }, components: { securitySchemes: { bearer: { type: 'http', scheme: 'bearer' } } }, security: [{ bearer: [] }] }, transform: jsonSchemaTransform });
 

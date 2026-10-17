@@ -59,7 +59,7 @@ function SkillEditor({ s }: { s: SkillRow }) {
   const nav = useNavigate();
   const owner = isRole('factory_owner');
   const editable = !s.scope.startsWith('pack');
-  const { data, isLoading } = useApi<{ files: Record<string, string>; lint: Lint }>(['skill', factoryId, s.name, s.scope], `/factories/${factoryId}/skills/${s.name}`, { scope: s.scope });
+  const { data, isLoading } = useApi<{ files: Record<string, string>; lint: Lint }>(['skill', factoryId, s.name, s.scope], `/factories/${factoryId}/skills/${s.name}`, { scope: s.scope === 'pack' ? `pack:${s.source}` : s.scope });
   const [files, setFiles] = useState<Record<string, string>>({});
   const [file, setFile] = useState('SKILL.md');
   const [lint, setLint] = useState<Lint | null>(null);
