@@ -1,0 +1,30 @@
+%% Life of one work item. GitHub renders .mmd files.
+stateDiagram-v2
+  [*] --> INTAKE: issue labelled, ticket, web form, API, schedule
+  INTAKE --> INTENT: foreman picks the start phase
+  INTAKE --> SPEC: simple item, skip intent
+  INTENT --> NEEDS_INPUT: agent asks a question
+  NEEDS_INPUT --> INTENT: answered in the Inbox
+  INTENT --> SPEC: triage done
+  SPEC --> AWAITING_SPEC_APPROVAL: spec written, draft PR opened
+  AWAITING_SPEC_APPROVAL --> SPEC: changes requested
+  AWAITING_SPEC_APPROVAL --> BUILD: approved by a person
+  BUILD --> AWAITING_GATE: extra gate by risk
+  AWAITING_GATE --> BUILD: changes requested
+  BUILD --> VERIFY: code pushed
+  AWAITING_GATE --> VERIFY: approved (gate after build)
+  VERIFY --> BUILD: findings, send back to executor
+  VERIFY --> AWAITING_GATE: extra gate after verify, for example a database review
+  AWAITING_GATE --> SHIP: approved (gate after verify)
+  VERIFY --> SHIP: checks and evidence pass
+  SHIP --> AWAITING_HANDOFF: pull request ready for review
+  AWAITING_HANDOFF --> BUILD: changes requested
+  AWAITING_HANDOFF --> COMPLETE: approved, a person merges
+  INTENT --> BLOCKED: stopped, timed out or over budget
+  BUILD --> BLOCKED: stopped, timed out or over budget
+  BLOCKED --> BUILD: Retry (resumes the phase that was paused)
+  BLOCKED --> FAILED: gave up
+  INTAKE --> CANCELLED: cancelled by a person
+  COMPLETE --> [*]
+  FAILED --> [*]
+  CANCELLED --> [*]

@@ -44,7 +44,7 @@ Production uses OIDC (Entra ID, Okta, Keycloak) and `ZF_DEV_LOGIN=0`. Put the AP
 | `apps/cli` | `zf validate`, `zf skills lint`, `zf pack install` (animated picker), `zf pack lock`, `zf run`, `zf send`, `zf tasks`, `zf audit verify`, `zf schema` |
 | `apps/mcp` | The factory MCP server: `send_task`, `get_task(start_working)`, `message_foreman`, `add_context`, `get_agent_context`, `validate_definition`, `get_schema`, `complete_task`, ... Snippets for Claude Code, Codex and Copilot are in Settings |
 | `examples/` | `01-single-repo` and `02-issue-to-pr` factory definitions |
-| `docs/` | `ARCHITECTURE.md`, `DECISIONS.md` |
+| `docs/` | `USER_GUIDE.md` (start here), `CAPABILITIES.md` (everything it can do), `ARCHITECTURE.md`, `architecture.mmd` and `work-item-lifecycle.mmd` (Mermaid diagrams; GitHub renders them), `DECISIONS.md` |
 
 ## Commands
 

@@ -1,0 +1,85 @@
+%% Zerovity Factory architecture. GitHub renders .mmd files. To export an image: npx @mermaid-js/mermaid-cli -i docs/architecture.mmd -o architecture.svg
+flowchart LR
+  subgraph SRC["Work comes in"]
+    GH["GitHub issues, PRs, comments"]
+    JR["Jira tickets"]
+    HOOK["Webhooks and schedules"]
+    CLI["zf CLI and REST API"]
+    LOCAL["Your own Claude Code / Codex / Copilot (MCP)"]
+  end
+
+  subgraph WEB["Web app"]
+    UI["Floor, Inbox, Work item, Run page, Agents, Skills, Context, Definition, Connections, Dashboard, Settings"]
+  end
+
+  subgraph API["API service"]
+    ROUTES["REST routes, auth, roles, tokens, OpenAPI"]
+    WH["Webhook receivers"]
+    MCPS["MCP server"]
+    SSE["Live streams (SSE)"]
+  end
+
+  subgraph ORCH["Orchestrator"]
+    INTAKE["Intake"]
+    FOREMAN["Foreman (rules or small model)"]
+    SM["State machine: Intent, Spec, Build, Verify, Ship, Handoff"]
+    GATES["Gates, policy, budgets, limits"]
+    CTX["Context assembler"]
+    DEFS["Definition, skills and packs"]
+    CONN["Connections and secrets"]
+  end
+
+  subgraph STORE["Storage"]
+    DB[("Postgres, or embedded PGlite")]
+    Q[("Job queue")]
+    AUD[("Audit log, hash chain")]
+    ART[("Artifacts: disk or S3")]
+  end
+
+  subgraph WORKER["Worker"]
+    EXEC["Executor: clone, skills, context, limits"]
+    SBX["Sandbox: local or Docker, egress allowlist"]
+  end
+
+  subgraph HARNESS["Coding agent CLIs"]
+    CC["Claude Code"]
+    CX["Codex"]
+    CP["Copilot"]
+    FK["Fake (demo)"]
+  end
+
+  OUT["GitHub: branch and pull request"]
+  HUMAN(["A person reviews and merges. Agents never merge."])
+
+  GH --> WH
+  JR --> WH
+  HOOK --> WH
+  CLI --> ROUTES
+  LOCAL --> MCPS
+  UI <--> ROUTES
+  SSE --> UI
+
+  WH --> INTAKE
+  ROUTES --> INTAKE
+  MCPS --> INTAKE
+  INTAKE --> FOREMAN --> SM
+  SM --- GATES
+  SM --- CTX
+  SM --- DEFS
+  SM --- CONN
+  SM --> DB
+  SM --> AUD
+  SM --> Q
+  DB --> SSE
+
+  Q --> EXEC
+  EXEC --> SBX
+  SBX --> CC
+  SBX --> CX
+  SBX --> CP
+  SBX --> FK
+  EXEC -->|"events, usage, result.json"| DB
+  EXEC --> ART
+  EXEC -->|"push branch"| OUT
+  CONN -->|"comments and status"| OUT
+  OUT --> HUMAN
