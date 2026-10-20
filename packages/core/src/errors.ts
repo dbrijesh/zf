@@ -17,6 +17,15 @@ export const unauthorized = (msg = 'Authentication required') => new ZfError('un
 export const conflict = (msg: string, details?: unknown) => new ZfError('conflict', msg, 409, details);
 export const invalid = (msg: string, details?: unknown) => new ZfError('invalid', msg, 400, details);
 
+/** A Postgres unique-constraint violation (23505), also when the driver wraps it (drizzle puts the original in cause). */
+export function isUniqueViolation(e: unknown): boolean {
+  for (let x: unknown = e, i = 0; x && i < 4; x = (x as { cause?: unknown }).cause, i++) {
+    const o = x as { code?: string; message?: string };
+    if (o.code === '23505' || /duplicate key value violates unique constraint/i.test(o.message ?? '')) return true;
+  }
+  return false;
+}
+
 export function errMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }

@@ -15,26 +15,36 @@ export class SecretBox {
   constructor(private master: Buffer) {
     if (master.length !== 32) throw new Error('master key must be 32 bytes');
   }
-  seal(plain: string): string {
+  /**
+   * `aad` binds the ciphertext to what it belongs to (scope, id and name): a sealed value copied onto another row, or
+   * another secret's name, no longer decrypts. Values sealed without it (older versions) still open.
+   */
+  seal(plain: string, aad?: string): string {
     const dek = crypto.randomBytes(32);
     const n1 = crypto.randomBytes(12);
     const c1 = crypto.createCipheriv('aes-256-gcm', dek, n1);
+    if (aad) c1.setAAD(Buffer.from(aad, 'utf8'));
     const ct = Buffer.concat([c1.update(plain, 'utf8'), c1.final()]);
     const t1 = c1.getAuthTag();
     const n2 = crypto.randomBytes(12);
     const c2 = crypto.createCipheriv('aes-256-gcm', this.master, n2);
+    if (aad) c2.setAAD(Buffer.from(aad, 'utf8'));
     const wrapped = Buffer.concat([c2.update(dek), c2.final()]);
     const t2 = c2.getAuthTag();
-    return JSON.stringify({ v: 1, ct: ct.toString('base64'), n: n1.toString('base64'), t: t1.toString('base64'), wk: wrapped.toString('base64'), wn: n2.toString('base64'), wt: t2.toString('base64') });
+    return JSON.stringify({ v: aad ? 2 : 1, ct: ct.toString('base64'), n: n1.toString('base64'), t: t1.toString('base64'), wk: wrapped.toString('base64'), wn: n2.toString('base64'), wt: t2.toString('base64') });
   }
-  open(sealed: string): string {
-    const o = JSON.parse(sealed) as Record<string, string>;
-    const d2 = crypto.createDecipheriv('aes-256-gcm', this.master, Buffer.from(o.wn, 'base64'));
-    d2.setAuthTag(Buffer.from(o.wt, 'base64'));
-    const dek = Buffer.concat([d2.update(Buffer.from(o.wk, 'base64')), d2.final()]);
-    const d1 = crypto.createDecipheriv('aes-256-gcm', dek, Buffer.from(o.n, 'base64'));
-    d1.setAuthTag(Buffer.from(o.t, 'base64'));
-    return Buffer.concat([d1.update(Buffer.from(o.ct, 'base64')), d1.final()]).toString('utf8');
+  open(sealed: string, aad?: string): string {
+    const o = JSON.parse(sealed) as Record<string, string | number>;
+    const bound = o.v === 2; // version 2 was sealed with AAD, so it can only be opened with the same AAD
+    if (bound && !aad) throw new Error('secret is bound to its location and cannot be opened without it');
+    const d2 = crypto.createDecipheriv('aes-256-gcm', this.master, Buffer.from(String(o.wn), 'base64'));
+    if (bound) d2.setAAD(Buffer.from(aad!, 'utf8'));
+    d2.setAuthTag(Buffer.from(String(o.wt), 'base64'));
+    const dek = Buffer.concat([d2.update(Buffer.from(String(o.wk), 'base64')), d2.final()]);
+    const d1 = crypto.createDecipheriv('aes-256-gcm', dek, Buffer.from(String(o.n), 'base64'));
+    if (bound) d1.setAAD(Buffer.from(aad!, 'utf8'));
+    d1.setAuthTag(Buffer.from(String(o.t), 'base64'));
+    return Buffer.concat([d1.update(Buffer.from(String(o.ct), 'base64')), d1.final()]).toString('utf8');
   }
 }
 
@@ -56,6 +66,8 @@ export function loadMasterKey(opts: { env?: string; dataDir?: string } = {}): Bu
 
 export type SecretScope = 'org' | 'factory' | 'connection';
 
+export const secretAad = (scope: string, scopeId: string, name: string): string => `zf-secret:${scope}:${scopeId}:${name}`;
+
 export interface SecretMeta { id: string; scope: string; scopeId: string; name: string; last4: string; updatedAt: Date }
 
 /** DB-backed provider. Values are never returned by list(); get() is for the worker and connection tests only. */
@@ -63,7 +75,7 @@ export class DbSecrets {
   constructor(private db: Db, private box: SecretBox) {}
 
   async set(scope: SecretScope, scopeId: string, name: string, value: string, by?: string): Promise<string> {
-    const ciphertext = this.box.seal(value);
+    const ciphertext = this.box.seal(value, secretAad(scope, scopeId, name));
     const last4 = value.slice(-4);
     const [ex] = await this.db.select({ id: s.secrets.id }).from(s.secrets).where(and(eq(s.secrets.scope, scope), eq(s.secrets.scopeId, scopeId), eq(s.secrets.name, name)));
     if (ex) {
@@ -77,12 +89,12 @@ export class DbSecrets {
 
   async get(scope: SecretScope, scopeId: string, name: string): Promise<string | undefined> {
     const [r] = await this.db.select().from(s.secrets).where(and(eq(s.secrets.scope, scope), eq(s.secrets.scopeId, scopeId), eq(s.secrets.name, name)));
-    return r ? this.box.open(r.ciphertext) : undefined;
+    return r ? this.box.open(r.ciphertext, secretAad(r.scope, r.scopeId, r.name)) : undefined;
   }
 
   async getById(id: string): Promise<string | undefined> {
     const [r] = await this.db.select().from(s.secrets).where(eq(s.secrets.id, id));
-    return r ? this.box.open(r.ciphertext) : undefined;
+    return r ? this.box.open(r.ciphertext, secretAad(r.scope, r.scopeId, r.name)) : undefined;
   }
 
   async delete(scope: SecretScope, scopeId: string, name: string): Promise<void> {

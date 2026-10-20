@@ -10,7 +10,7 @@ export interface ApiConfig {
   devLogin: boolean;
   publicUrl: string;
   cors?: string[];
-  oidc?: { issuer: string; clientId: string; clientSecret: string; scopes: string; groupsClaim: string; adminGroups: string[]; approverGroups: string[]; ownerGroups: string[] };
+  oidc?: { issuer: string; clientId: string; clientSecret: string; scopes: string; groupsClaim: string; adminGroups: string[]; approverGroups: string[]; ownerGroups: string[]; /** only these email domains may sign in (empty: any the IdP vouches for) */ allowedDomains: string[]; /** with a value, only this email may become the first (admin) user */ bootstrapAdmin?: string };
   /** a Jira/GitHub OAuth app used for popup flows */
   atlassian?: { clientId: string; clientSecret: string };
   githubAppSlug?: string;

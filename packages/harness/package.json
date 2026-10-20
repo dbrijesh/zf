@@ -11,6 +11,7 @@
     "@zerovity/harness-claude-code": "*",
     "@zerovity/harness-codex": "*",
     "@zerovity/harness-copilot": "*",
+    "@zerovity/harness-cursor": "*",
     "@zerovity/harness-fake": "*"
   }
 }

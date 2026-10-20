@@ -48,6 +48,7 @@ Items marked *(not tested live)* are built and covered by automated tests with m
 - **Claude Code**: verified against a real recorded session and real runs.
 - **OpenAI Codex CLI** *(synthetic fixtures; not tested live)*.
 - **GitHub Copilot CLI** *(synthetic fixtures; not tested live)*.
+- **Cursor CLI** (`agent`) *(written from the official docs; synthetic fixtures; not tested live)*: headless runs with skills in `.cursor/skills`, MCP and permission config per run, session resume, API key connection. Cursor reports no token counts, so its usage is estimated from text size.
 - Offline **fake** harness for demos, tests and CI; no model needed.
 - Per-agent model and reasoning level, with factory defaults.
 - Usage, cost and cached tokens captured per run; a harness-reported cost wins over the price table.
@@ -89,11 +90,13 @@ Items marked *(not tested live)* are built and covered by automated tests with m
 - Setup commands run before the agent starts.
 - Credentials injected per run only, never written into the worktree.
 - Secret redaction on all stored events.
+- Git credentials are never written into the working copy; agents run git with the factory identity and none of the operator's git configuration.
+- Skills and tool config are placed for one run only and removed before the commit, restoring any file the repository already had there.
 
 ## Connections and secrets
 - GitHub App and GitHub token connections; installation tokens are short-lived.
 - Jira Cloud (OAuth) and Jira Data Center (token) connections *(not tested live)*.
-- Anthropic, OpenAI and Copilot credentials; MCP HTTP servers; package registry; OIDC.
+- Anthropic, OpenAI, Copilot and Cursor credentials; MCP HTTP servers; package registry; OIDC.
 - Test, rotate and health status on every connection.
 - Secrets encrypted with AES-256-GCM envelope encryption; shown only as the last four characters.
 - Vault and AWS Secrets Manager providers *(not tested live)*.
@@ -116,7 +119,8 @@ Items marked *(not tested live)* are built and covered by automated tests with m
 - Editable model price table (defaults are approximate).
 
 ## Security and audit
-- Sign-in with OIDC (Entra ID, Okta, Keycloak) or dev login for trials.
+- Sign-in with OIDC (Entra ID, Okta, Keycloak) or dev login for trials. Dev login refuses to start on a public address unless explicitly allowed. OIDC can restrict email domains and the first administrator, and binds accounts to the identity provider's subject.
+- Sessions can be ended: sign out everywhere, or an administrator ends a person's sessions.
 - Roles: org admin, factory owner, approver, member, viewer.
 - Personal access tokens for the API, CLI and MCP.
 - Signed session cookies; webhook signature verification (GitHub) and shared secrets (Jira, inbound).
@@ -140,6 +144,7 @@ Items marked *(not tested live)* are built and covered by automated tests with m
 ## Deploy and operate
 - One command local trial with an embedded database (no Postgres needed).
 - Postgres, MinIO or S3 artifact storage, separate API and worker services for production.
+- Safe with several API instances and workers: a database lease for periodic work, a unique index against duplicate work items, and worker start-up that never fails other workers' runs.
 - Docker Compose file, API and worker image, runner base image, `.env.example`, CI workflow.
 - Health endpoint and container health checks.
 - Works behind a tunnel (Cloudflare Tunnel, ngrok) for webhooks without a static IP.

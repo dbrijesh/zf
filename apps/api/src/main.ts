@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { createServices, findRepoRoot } from '@zerovity/orchestrator';
 import { createLogger, errMessage } from '@zerovity/core';
+import { tryLease } from '@zerovity/db';
 import { Worker } from '@zerovity/worker';
 import { buildApp, makeConfig } from './app';
 import { seedDemo, seedBulkItems } from './seed';
@@ -25,16 +26,19 @@ async function main() {
   const embed = process.env.ZF_EMBED_WORKER ? process.env.ZF_EMBED_WORKER !== '0' : s.handle.kind === 'pglite';
   let worker: Worker | undefined;
   if (embed) {
-    worker = new Worker(s, { concurrency: Number(process.env.ZF_WORKER_CONCURRENCY ?? 2), sandbox: (process.env.ZF_SANDBOX as 'local' | 'docker') ?? 'local', forges: ctx.forges, log, docker: { network: process.env.ZF_SANDBOX_NETWORK }, localSetup: process.env.ZF_LOCAL_SETUP === '1' });
+    worker = new Worker(s, { concurrency: Number(process.env.ZF_WORKER_CONCURRENCY ?? 2), sandbox: (process.env.ZF_SANDBOX as 'local' | 'docker') ?? 'local', forges: ctx.forges, log, sole: s.handle.kind === 'pglite', docker: { network: process.env.ZF_SANDBOX_NETWORK }, localSetup: process.env.ZF_LOCAL_SETUP === '1' });
     await worker.start();
     log.info('embedded worker started', { id: worker.id, sandbox: process.env.ZF_SANDBOX ?? 'local' });
   }
 
+  // With several API instances, periodic work runs on one of them at a time (a lease in the database; it lapses if the owner dies).
+  const me = `api-${process.pid}-${Date.now().toString(36)}`;
+  const leader = (name: string, everyMs: number, fn: () => Promise<unknown>, what: string) => setInterval(() => void (async () => { if (await tryLease(s.db, name, me, everyMs - 5_000)) await fn(); })().catch((e) => log.warn(what + ' failed', { error: errMessage(e) })), everyMs);
   const timers = [
-    setInterval(() => void ctx.intake.tickSchedules().catch((e) => log.warn('schedule tick failed', { error: errMessage(e) })), 60_000),
-    setInterval(() => void ctx.conns.checkAll().catch((e) => log.warn('connection check failed', { error: errMessage(e) })), 15 * 60_000),
+    leader('schedules', 60_000, () => ctx.intake.tickSchedules(), 'schedule tick'),
+    leader('connection-check', 15 * 60_000, () => ctx.conns.checkAll(), 'connection check'),
   ];
-  if (!embed) timers.push(setInterval(() => void s.orch.tick().catch(() => undefined), 60_000));
+  if (!embed) timers.push(leader('maintenance', 60_000, () => s.orch.tick(), 'maintenance tick'));
 
   const port = Number(process.env.PORT ?? 8787);
   await app.listen({ port, host: process.env.HOST ?? '0.0.0.0' });

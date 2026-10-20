@@ -93,3 +93,34 @@ describe('zf run (offline harness)', () => {
     expect(zf(['run', '--agent', 'ghost', '--harness', 'fake']).out).toContain('not found');
   });
 });
+
+describe('zf run with the Cursor harness (stand-in binary)', () => {
+  const FAKE = path.join(ROOT, 'packages/harness/cursor/fixtures/fake-agent.mjs');
+  const run = (extra: string[] = [], env: Record<string, string> = {}) => {
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'zf-cur-'));
+    fs.writeFileSync(path.join(repo, 'README.md'), '# demo\n');
+    const r = spawnSync(process.execPath, [path.join(ROOT, 'apps/cli/bin/zf.mjs'), 'run', '--agent', 'zerovity-researcher', '--harness', 'cursor', '--repo', repo, '--prompt', 'Investigate a health endpoint', ...extra], { cwd: ROOT, encoding: 'utf8', timeout: 120_000, env: { ...process.env, NO_COLOR: '1', ZF_CURSOR_BIN: process.execPath, ZF_CURSOR_ARGS: JSON.stringify([FAKE]), CURSOR_API_KEY: 'cur-test-key', ...env } });
+    const out = `${r.stdout}${r.stderr}`;
+    const work = /workdir (.+)/.exec(out)?.[1]?.trim();
+    return { out, code: r.status, work };
+  };
+  it('detects the binary, runs headless with force and trust, parses the stream and checks the result contract', () => {
+    const r = run();
+    expect(r.out).toContain('harness cursor');
+    expect(r.out).toContain('result: done');
+    expect(r.out).toContain('Triage written by the fake Cursor agent.');
+    expect(r.out).toContain('session fake-cursor-session-1');
+    expect(r.out).toMatch(/usage: in \d+ . out \d+/);
+    expect(r.code).toBe(0);
+    const called = JSON.parse(fs.readFileSync(path.join(r.work!, '.zerovity/out/argv.json'), 'utf8'));
+    expect(called.args).toEqual(expect.arrayContaining(['-p', '--output-format', 'stream-json', '--force', '--trust']));
+    expect(called.key).toBe('cur-test-key'); // the API key reached the process, through the environment
+    expect(called.args.join(' ')).not.toContain('cur-test-key'); // and never the command line
+    expect(called.hasCliConfig).toBe(true); // deny rules were in place before the agent started
+  });
+  it('says clearly when the Cursor CLI is not installed', () => {
+    const r = run([], { ZF_CURSOR_BIN: 'definitely-not-installed-cursor', ZF_CURSOR_ARGS: '' });
+    expect(r.code).toBe(1);
+    expect(r.out).toContain('cursor is not installed');
+  });
+});

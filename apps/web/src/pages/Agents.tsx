@@ -5,8 +5,8 @@ import { api, useAct, useApi, queryClient, type AgentView, type Connection, type
 import { toast, toastError, useApp } from '../state';
 import { CodeEditor } from '../ui/Editor';
 
-const HARNESSES = ['claude-code', 'codex', 'copilot'];
-const MODELS: Record<string, string[]> = { 'claude-code': ['claude-sonnet-5-5', 'claude-opus-5-5', 'claude-haiku-5-5'], codex: ['gpt-5-codex'], copilot: [''] };
+const HARNESSES = ['claude-code', 'codex', 'copilot', 'cursor'];
+const MODELS: Record<string, string[]> = { 'claude-code': ['claude-sonnet-5-5', 'claude-opus-5-5', 'claude-haiku-5-5'], codex: ['gpt-5-codex'], copilot: [''], cursor: ['', 'auto', 'sonnet-4.5', 'gpt-5'] };
 const PHASES = ['INTENT', 'SPEC', 'BUILD', 'VERIFY', 'SHIP', 'CUSTOM'];
 const SCOPES = ['org', 'factory', 'repo', 'workItem', 'phase'];
 
@@ -67,7 +67,7 @@ function AgentEditor({ a }: { a: AgentView }) {
   const [fork, setFork] = useState(false);
   const [issues, setIssues] = useState<Issue[]>([]);
   const dirty = JSON.stringify(d) !== JSON.stringify({ description: a.description, phase: a.phase, harnessType: a.harness.type, model: a.harness.model ?? '', reasoning: a.harness.reasoning ?? '', runner: a.runner, credential: a.credential ?? '', mcp: a.mcpServers, scopes: a.contextScopes, outputs: a.outputs.join(', '), maxRun: a.maxRunMinutes ? String(a.maxRunMinutes) : '', skills: a.skills.filter((s) => s.layer !== 'agent').map((s) => s.name), body: a.body });
-  const credConns = (conns ?? []).filter((c) => c.type === 'harness' && (d.harnessType === 'claude-code' ? ['anthropic', 'bedrock', 'vertex'].includes(c.provider) : d.harnessType === 'codex' ? c.provider === 'openai' : c.provider === 'copilot'));
+  const credConns = (conns ?? []).filter((c) => c.type === 'harness' && (d.harnessType === 'claude-code' ? ['anthropic', 'bedrock', 'vertex'].includes(c.provider) : d.harnessType === 'codex' ? c.provider === 'openai' : d.harnessType === 'cursor' ? c.provider === 'cursor' : c.provider === 'copilot'));
   const save = useAct(() => api<{ ok: boolean; issues: Issue[] }>(`/factories/${factoryId}/agents/${a.name}`, { method: 'PUT', body: { description: d.description, phase: d.phase, harness: { type: d.harnessType, model: d.model || undefined, reasoning: d.reasoning || undefined }, runner: d.runner || undefined, credential: d.credential || null, mcpServers: d.mcp, contextScopes: d.scopes, outputs: d.outputs.split(',').map((x) => x.trim()).filter(Boolean), maxRunMinutes: d.maxRun ? Number(d.maxRun) : undefined, skills: d.skills, ...(d.body !== a.body || fork ? { body: d.body, fork: true } : {}) } }), {
     invalidate: [['agents'], ['floor'], ['skills']], onSuccess: (r) => { setIssues(r.issues); r.ok ? toast('Saved · the next run uses this configuration') : toast(r.issues.find((i) => i.severity === 'error')?.message ?? 'Not saved', 'error'); }, onError: toastError });
   const [sample, setSample] = useState('Add a health check endpoint that returns the build version.');

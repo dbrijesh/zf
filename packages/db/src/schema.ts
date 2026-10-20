@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import { pgTable, text, integer, bigint, boolean, jsonb, timestamp, doublePrecision, primaryKey, uniqueIndex, index, serial } from 'drizzle-orm/pg-core';
 
 /** IDs are ULIDs stored as text. Timestamps are timestamptz. */
@@ -17,6 +18,8 @@ export const users = pgTable('users', {
   id: id(), orgId: text('org_id').notNull().references(() => orgs.id),
   email: text('email').notNull(), name: text('name').notNull(), externalId: text('external_id'),
   groups: json<string[]>('groups').notNull().default([]),
+  /** sessions issued before this moment are no longer valid (sign out everywhere, removal, role loss) */
+  sessionsValidAfter: ts('sessions_valid_after'),
   createdAt: createdAt(), updatedAt: updatedAt(),
 }, (t) => [uniqueIndex('users_org_email').on(t.orgId, t.email)]);
 
@@ -71,7 +74,7 @@ export const workItems = pgTable('work_items', {
   startPhase: text('start_phase'), flags: json<Record<string, unknown>>('flags').notNull().default({}),
   stateSince: ts('state_since').notNull().defaultNow(), completedAt: ts('completed_at'),
   createdAt: createdAt(), updatedAt: updatedAt(),
-}, (t) => [uniqueIndex('wi_factory_short').on(t.factoryId, t.shortId), index('wi_factory_state').on(t.factoryId, t.state), index('wi_source').on(t.factoryId, t.sourceType, t.sourceRef)]);
+}, (t) => [uniqueIndex('wi_factory_short').on(t.factoryId, t.shortId), index('wi_factory_state').on(t.factoryId, t.state), uniqueIndex('wi_source').on(t.factoryId, t.sourceType, t.sourceRef).where(sql`source_ref is not null and state not in ('COMPLETE', 'FAILED', 'CANCELLED')`)]);
 
 export const runs = pgTable('runs', {
   id: id(), workItemId: text('work_item_id').notNull().references(() => workItems.id), factoryId: text('factory_id').notNull(),

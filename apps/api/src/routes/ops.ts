@@ -140,6 +140,7 @@ export async function opsRoutes(app0: FastifyInstance, ctx: AppCtx) {
         'claude-code': `claude mcp add --transport http zerovity ${url} --header "Authorization: Bearer <your personal access token>"`,
         codex: `# ~/.codex/config.toml\n[mcp_servers.zerovity]\nurl = "${url}"\nhttp_headers = { Authorization = "Bearer <your personal access token>" }`,
         copilot: `// ~/.copilot/mcp-config.json\n{\n  "mcpServers": {\n    "zerovity": {\n      "type": "http",\n      "url": "${url}",\n      "headers": { "Authorization": "Bearer <your personal access token>" },\n      "tools": ["*"]\n    }\n  }\n}`,
+        cursor: `// ~/.cursor/mcp.json (or .cursor/mcp.json in a project)\n{\n  "mcpServers": {\n    "zerovity": {\n      "url": "${url}",\n      "headers": { "Authorization": "Bearer <your personal access token>" }\n    }\n  }\n}`,
       },
       note: 'Create a personal access token under Settings > Access tokens. The factory MCP server exposes: list_factories, send_task, list_tasks, search_tasks, get_task, get_conversation, message_foreman, add_context, get_agent_context, validate_definition, get_schema, complete_task.',
     };

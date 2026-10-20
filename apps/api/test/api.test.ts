@@ -6,6 +6,7 @@ import crypto from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { createServices, findRepoRoot, RuleAdvisor, type Services } from '@zerovity/orchestrator';
 import { tables as t } from '@zerovity/db';
+import { ulid } from '@zerovity/core';
 import { Worker } from '@zerovity/worker';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../src/app';
@@ -324,7 +325,7 @@ describe('measure, settings, secrets, connections, webhooks, floor', () => {
   });
   it('MCP setup snippets for the three local agents', async () => {
     const m = (await call(devCookie, 'GET', '/mcp-setup')).json;
-    expect(Object.keys(m.snippets)).toEqual(['claude-code', 'codex', 'copilot']);
+    expect(Object.keys(m.snippets)).toEqual(['claude-code', 'codex', 'copilot', 'cursor']);
     expect(m.snippets['claude-code']).toContain('claude mcp add --transport http zerovity http://localhost:8787/mcp');
   });
   it('webhook admin: create, rotate, secret shown once', async () => {
@@ -343,7 +344,7 @@ describe('measure, settings, secrets, connections, webhooks, floor', () => {
     const it = fl.items.find((x: { id: string }) => x.id === wi.id);
     expect(it).toMatchObject({ lane: 'INTENT', status: 'ask' });
     expect(fl.counters.waiting).toBeGreaterThan(0);
-    expect(fl.health.map((h: { label: string }) => h.label)).toEqual(['GitHub', 'Jira', 'Claude Code', 'Codex', 'Copilot']);
+    expect(fl.health.map((h: { label: string }) => h.label)).toEqual(['GitHub', 'Jira', 'Claude Code', 'Codex', 'Copilot', 'Cursor']);
     await call(devCookie, 'POST', `/work-items/${wi.id}/cancel`);
   });
   it('a 200-item floor responds quickly', async () => {
@@ -479,6 +480,83 @@ describe('inbound webhooks (GitHub and Jira signatures, tokens)', () => {
   });
 });
 
+
+describe('sessions can be ended, and member management stays inside the organisation', () => {
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  it('sign out everywhere ends earlier sessions at once, and a fresh sign-in works', async () => {
+    const old = await login('sess1@acme.test');
+    expect((await call(old, 'GET', '/me')).status).toBe(200);
+    expect((await call(old, 'POST', '/auth/logout-all')).status).toBe(200);
+    expect((await call(old, 'GET', '/me')).status).toBe(401); // the cookie itself is still validly signed
+    await sleep(5);
+    const fresh = await login('sess1@acme.test');
+    expect((await call(fresh, 'GET', '/me')).status).toBe(200);
+  });
+  it('an admin can end another person\'s sessions; others cannot', async () => {
+    const victim = await login('sess2@acme.test');
+    const me = (await call(victim, 'GET', '/me')).json;
+    expect((await call(devCookie, 'POST', `/members/${me.id}/revoke-sessions`)).status).toBe(403);
+    expect((await call(adminCookie, 'POST', `/members/${me.id}/revoke-sessions`)).status).toBe(200);
+    expect((await call(victim, 'GET', '/me')).status).toBe(401);
+  });
+  it('changing a role changes only the matching membership, not every one the person has', async () => {
+    const email = 'scoped@acme.test';
+    expect((await call(adminCookie, 'POST', '/members', { email, name: 'Scoped', role: 'member' })).status).toBe(200);
+    expect((await call(adminCookie, 'POST', '/members', { email, name: 'Scoped', role: 'approver', factoryId })).status).toBe(200);
+    expect((await call(adminCookie, 'POST', '/members', { email, name: 'Scoped', role: 'viewer' })).status).toBe(200); // org-wide downgrade
+    const m = (await call(adminCookie, 'GET', '/members')).json.find((x: { email: string }) => x.email === email);
+    expect(m.memberships.find((x: { factoryId: string | null }) => x.factoryId === null).role).toBe('viewer');
+    expect(m.memberships.find((x: { factoryId: string | null }) => x.factoryId === factoryId).role).toBe('approver');
+  });
+  it('removing a member only works for people in the caller\'s organisation', async () => {
+    const otherOrg = ulid(), otherUser = ulid();
+    await s.db.insert(t.orgs).values({ id: otherOrg, name: 'Other', slug: 'other-org' });
+    await s.db.insert(t.users).values({ id: otherUser, orgId: otherOrg, email: 'x@other.test', name: 'X' });
+    await s.db.insert(t.memberships).values({ id: ulid(), userId: otherUser, orgId: otherOrg, factoryId: null, role: 'member' });
+    expect((await call(adminCookie, 'DELETE', `/members/${otherUser}`)).status).toBe(404);
+    const stillThere = await s.db.select().from(t.memberships).where(eq(t.memberships.userId, otherUser));
+    expect(stillThere).toHaveLength(1); // nothing of theirs was touched
+  });
+  it('two deliveries of the same issue at once create exactly one work item', async () => {
+    const src = { type: 'github', ref: `acme/payments-service#${Date.now()}` };
+    const made = await Promise.all([1, 2, 3, 4].map(() => s.orch.createWorkItem({ factoryId, title: 'Same issue', source: src })));
+    expect(new Set(made.map((w) => w.id)).size).toBe(1);
+    const rows = await s.db.select().from(t.workItems).where(eq(t.workItems.sourceRef, src.ref));
+    expect(rows).toHaveLength(1);
+  });
+});
+
+describe('several workers: starting one must not fail the others\' runs', () => {
+  const mkRun = async (lockedUntil: Date | null) => {
+    const wiId = ulid(), runId = ulid();
+    await s.db.insert(t.workItems).values({ id: wiId, factoryId, shortId: `RC-${wiId.slice(-8)}`, seq: 900000, title: 'recon', state: 'BUILD' });
+    await s.db.insert(t.runs).values({ id: runId, workItemId: wiId, factoryId, agentName: 'zerovity-executor', phase: 'BUILD', harness: 'fake', status: 'running', startedAt: new Date() });
+    const jobId = ulid();
+    if (lockedUntil) await s.db.insert(t.jobs).values({ id: jobId, queue: 'run', payload: { runId }, state: 'active', lockedBy: 'other-worker', lockedUntil });
+    const status = async () => (await s.db.select().from(t.runs).where(eq(t.runs.id, runId)))[0];
+    return { runId, jobId, status };
+  };
+  it('a run held by a live worker is left alone, however long it has been running', async () => {
+    const r = await mkRun(new Date(Date.now() + 60_000));
+    await s.orch.reconcile(0);
+    expect((await r.status()).status).toBe('running');
+  });
+  it('a run whose worker stopped heartbeating is failed, so the item can be retried', async () => {
+    const r = await mkRun(new Date(Date.now() - 1_000));
+    await s.orch.reconcile(0);
+    expect(await r.status()).toMatchObject({ status: 'failed', exitReason: 'worker_lost' });
+  });
+  it('a run with no job at all is an orphan and is failed', async () => {
+    const r = await mkRun(null);
+    await s.orch.reconcile(0);
+    expect((await r.status()).status).toBe('failed');
+  });
+  it('the single embedded worker may ignore locks, because nothing else can be running', async () => {
+    const r = await mkRun(new Date(Date.now() + 60_000));
+    await s.orch.reconcile(0, { ignoreLocks: true });
+    expect((await r.status()).status).toBe('failed');
+  });
+});
 // Regression: the connection Test button (a bodiless POST) answered "415 Unsupported Media Type" when the client sent a non-JSON content type.
 describe('bodiless action requests', () => {
   it('accept any content type and an empty body', async () => {

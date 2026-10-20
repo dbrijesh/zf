@@ -2,7 +2,7 @@ import os from 'node:os';
 import { errMessage, redactText, nullLogger, ulid, type Logger } from '@zerovity/core';
 import type { Services } from '@zerovity/orchestrator';
 import { RUN_QUEUE } from '@zerovity/orchestrator';
-import type { Job } from '@zerovity/db';
+import { tryLease, type Job } from '@zerovity/db';
 import type { ForgeResolver } from '@zerovity/forge-common';
 import { executeRun, type ExecutorDeps } from './executor';
 
@@ -15,6 +15,8 @@ export interface WorkerOptions {
   log?: Logger;
   /** run orch.tick() (question reminders, lock reaping) about every minute */
   maintenance?: boolean;
+  /** this process is the only worker (embedded database): at start, fail every run still marked running without waiting for locks to lapse */
+  sole?: boolean;
   docker?: ExecutorDeps['docker'];
   localSetup?: boolean;
 }
@@ -39,11 +41,11 @@ export class Worker {
   async start(): Promise<void> {
     if (!this.stopped) return;
     this.stopped = false;
-    const n = await this.s.orch.reconcile(0);
+    const n = await this.s.orch.reconcile(0, { ignoreLocks: !!this.o.sole });
     if (n) this.log.warn('failed runs left behind by a previous worker', { runs: n });
     this.loop = this.run();
     this.s.hub.subscribe((e) => { if (e.type === 'changed') this.wake?.(); });
-    if (this.o.maintenance !== false) this.maint = setInterval(() => void this.s.orch.tick().catch((e) => this.log.warn('tick failed', { error: errMessage(e) })), 60_000);
+    if (this.o.maintenance !== false) this.maint = setInterval(() => void (async () => { if (await tryLease(this.s.db, 'maintenance', this.id, 55_000)) await this.s.orch.tick(); })().catch((e) => this.log.warn('tick failed', { error: errMessage(e) })), 60_000);
   }
 
   async stop(graceMs = 0): Promise<void> {

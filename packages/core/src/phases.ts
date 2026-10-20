@@ -36,7 +36,7 @@ export const PHASE_VAR: Record<Phase | 'GATE', string> = {
   SHIP: '--ship',
 };
 
-export const HARNESS_TYPES = ['claude-code', 'codex', 'copilot', 'fake'] as const;
+export const HARNESS_TYPES = ['claude-code', 'codex', 'copilot', 'cursor', 'fake'] as const;
 export type HarnessType = (typeof HARNESS_TYPES)[number];
 /** `fake` is a deterministic offline harness used for demos and tests. It is accepted by schemas but never shown as a production choice. */
 

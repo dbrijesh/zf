@@ -67,7 +67,7 @@ function RunnersTab() {
       <p className="hint">Runners are container images and resource shapes. Network egress is an allowlist; the container is the real security boundary.</p>
       <table className="grid"><thead><tr><th>Name</th><th>Image</th><th>Resources</th><th>Egress</th><th /></tr></thead><tbody>{data.runners.map((r) => <tr key={r.name}><td><b>{r.name}</b></td><td className="mono">{r.image}</td><td>{r.resources.cpus} CPU · {r.resources.memoryGb} GB</td><td>{r.network.egress}{r.network.egress === 'allowlist' ? ` (${r.network.allow.length} hosts)` : ''}</td><td>{isRole('factory_owner') && <><Btn small onClick={() => setEdit({ name: r.name, image: r.image, setup: r.setupCommands.join('\n'), cpus: String(r.resources.cpus), mem: String(r.resources.memoryGb), egress: r.network.egress, allow: r.network.allow.join('\n') })}>Edit</Btn><Btn small danger onClick={() => confirm(`Delete runner ${r.name}?`) && save.mutate({ runners: { [r.name]: null } })}>Delete</Btn></>}</td></tr>)}</tbody></table>
       {!data.runners.length && <Empty>No runners defined: the built-in default runner is used.</Empty>}
-      {isRole('factory_owner') && <Btn onClick={() => setEdit({ name: '', image: 'ghcr.io/hexaware/zerovity-runner-node:20', setup: 'corepack enable\npnpm install --frozen-lockfile', cpus: '4', mem: '8', egress: 'allowlist', allow: 'registry.npmjs.org\ngithub.com\napi.anthropic.com\napi.openai.com\napi.githubcopilot.com' })}>New runner</Btn>}
+      {isRole('factory_owner') && <Btn onClick={() => setEdit({ name: '', image: 'ghcr.io/hexaware/zerovity-runner-node:20', setup: 'corepack enable\npnpm install --frozen-lockfile', cpus: '4', mem: '8', egress: 'allowlist', allow: 'registry.npmjs.org\ngithub.com\napi.anthropic.com\napi.openai.com\napi.githubcopilot.com\ncursor.sh\ncursor.com' })}>New runner</Btn>}
       {edit && <><div className="scrim on" onClick={() => setEdit(null)} /><div className="modal" role="dialog" aria-modal="true" aria-label="Runner"><div className="mhead"><h2>Runner</h2></div><div className="mbody">
         <label className="fld">Name<input value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-') })} /></label>
         <label className="fld">Image<input value={edit.image} onChange={(e) => setEdit({ ...edit, image: e.target.value })} /></label>
@@ -152,7 +152,7 @@ function TokensTab() {
   const del = useAct((id: string) => api(`/tokens/${id}`, { method: 'DELETE' }), { invalidate: [['tokens']] });
   return (
     <>
-      <p className="hint">Personal access tokens let your local Claude Code, Codex or Copilot CLI talk to the factory MCP server and the REST API as you.</p>
+      <p className="hint">Personal access tokens let your local Claude Code, Codex, Copilot or Cursor CLI talk to the factory MCP server and the REST API as you.</p>
       <table className="grid"><thead><tr><th>Name</th><th>Token</th><th>Last used</th><th /></tr></thead><tbody>{(data ?? []).map((t) => <tr key={t.id}><td>{t.name}</td><td className="mono">{t.prefix}…</td><td>{t.lastUsedAt ? `${fmtAgo(t.lastUsedAt)} ago` : 'never'}</td><td><Btn small danger onClick={() => del.mutate(t.id)}>Revoke</Btn></td></tr>)}</tbody></table>
       <div className="row3"><input placeholder="Token name, e.g. laptop" value={name} onChange={(e) => setName(e.target.value)} aria-label="Token name" /><Btn pri disabled={!name} onClick={() => create.mutate(undefined)}>Create token</Btn></div>
       {fresh && <div className="banner warn">Copy it now, it is not shown again: <code>{fresh}</code> <Btn small onClick={() => { void navigator.clipboard?.writeText(fresh); toast('Copied'); }}>Copy</Btn></div>}
@@ -163,7 +163,7 @@ function TokensTab() {
 function McpTab() {
   const { data } = useApi<{ url: string; snippets: Record<string, string>; note: string }>(['static', 'mcp'], '/mcp-setup');
   if (!data) return null;
-  const names: Record<string, string> = { 'claude-code': 'Claude Code', codex: 'Codex CLI', copilot: 'GitHub Copilot CLI' };
+  const names: Record<string, string> = { 'claude-code': 'Claude Code', codex: 'Codex CLI', copilot: 'GitHub Copilot CLI', cursor: 'Cursor CLI' };
   return (
     <>
       <p className="hint">Endpoint: <code>{data.url}</code> (streamable HTTP). {data.note}</p>

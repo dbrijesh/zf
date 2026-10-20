@@ -36,6 +36,7 @@ export const CONNECTION_TYPES: ConnectionType[] = [
   { id: 'vertex', type: 'harness', provider: 'vertex', title: 'Google Vertex AI', group: 'AI harness credentials', description: 'Claude Code through Vertex.', v1: true, authKind: 'key', flow: 'form', fields: [{ name: 'ANTHROPIC_VERTEX_PROJECT_ID', label: 'Project ID', required: true }, { name: 'CLOUD_ML_REGION', label: 'Region', required: true }] },
   { id: 'openai', type: 'harness', provider: 'openai', title: 'OpenAI API key', group: 'AI harness credentials', description: 'Used by Codex CLI.', v1: true, authKind: 'key', flow: 'form', fields: [{ name: 'api_key', label: 'API key', secret: true, required: true }, { name: 'baseUrl', label: 'Base URL (gateway)', kind: 'url' }] },
   { id: 'copilot', type: 'harness', provider: 'copilot', title: 'GitHub Copilot token', group: 'AI harness credentials', description: 'A token for a user or service account with a Copilot seat. Used by Copilot CLI.', v1: true, authKind: 'token', flow: 'form', fields: [{ name: 'token', label: 'Token', secret: true, required: true }, { name: 'expiresAt', label: 'Token expires', placeholder: '2026-12-31', help: 'Used for expiry warnings' }] },
+  { id: 'cursor', type: 'harness', provider: 'cursor', title: 'Cursor API key', group: 'AI harness credentials', description: 'A Cursor API key for the Cursor CLI (Settings, Cursor Dashboard). Used by agents that run on the Cursor harness.', v1: true, authKind: 'key', flow: 'form', fields: [{ name: 'api_key', label: 'API key', secret: true, required: true }] },
   { id: 'gateway', type: 'gateway', provider: 'zerovity-gateway', title: 'Zerovity gateway', group: 'Model gateway', description: 'Route model traffic through the Zerovity gateway for token economics.', v1: true, authKind: 'none', flow: 'form', fields: [{ name: 'anthropicBaseUrl', label: 'Anthropic base URL', kind: 'url' }, { name: 'openaiBaseUrl', label: 'OpenAI base URL', kind: 'url' }] },
   { id: 'mcp-http', type: 'mcp', provider: 'mcp-http', title: 'MCP server (remote)', group: 'MCP servers', description: 'Any remote MCP server over streamable HTTP.', v1: true, authKind: 'token', flow: 'form', fields: [{ name: 'url', label: 'URL', required: true, kind: 'url' }, { name: 'header', label: 'Auth header name', placeholder: 'Authorization' }, { name: 'token', label: 'Header value', secret: true, help: 'e.g. Bearer abc123' }] },
   { id: 'mcp-stdio', type: 'mcp', provider: 'mcp-stdio', title: 'MCP server (command)', group: 'MCP servers', description: 'A local stdio MCP server started inside the runner.', v1: true, authKind: 'none', flow: 'form', fields: [{ name: 'command', label: 'Command', required: true }, { name: 'args', label: 'Arguments (space separated)' }] },
@@ -43,7 +44,7 @@ export const CONNECTION_TYPES: ConnectionType[] = [
   { id: 'oidc', type: 'identity', provider: 'oidc', title: 'OIDC identity provider', group: 'Identity', description: 'Entra ID, Okta, Keycloak. Organisation admins only.', v1: true, authKind: 'oidc', flow: 'form', fields: [{ name: 'issuer', label: 'Issuer URL', required: true, kind: 'url' }, { name: 'clientId', label: 'Client ID', required: true }, { name: 'client_secret', label: 'Client secret', secret: true, required: true }, { name: 'groupsClaim', label: 'Groups claim', placeholder: 'groups' }] },
 ];
 
-const PRIMARY_SECRET: Record<string, string> = { 'github-app': 'private_key', 'github-token': 'token', 'jira-cloud': 'access_token', 'jira-dc': 'pat', anthropic: 'api_key', openai: 'api_key', copilot: 'token', 'mcp-http': 'token', registry: 'password', oidc: 'client_secret' };
+const PRIMARY_SECRET: Record<string, string> = { 'github-app': 'private_key', 'github-token': 'token', 'jira-cloud': 'access_token', 'jira-dc': 'pat', anthropic: 'api_key', openai: 'api_key', copilot: 'token', cursor: 'api_key', 'mcp-http': 'token', registry: 'password', oidc: 'client_secret' };
 
 export type ConnectionRow = typeof t.connections.$inferSelect;
 export interface ConnectionView { id: string; typeId: string; type: string; provider: string; displayName: string; authKind: string; status: string; scopes: string[]; config: Record<string, unknown>; secrets: Array<{ name: string; last4: string }>; lastCheckedAt: Date | null; lastError: string | null; expiresAt: Date | null; createdBy: string | null; createdAt: Date; dependents?: Dependents }
@@ -79,6 +80,14 @@ export class ConnectionService {
     const ct = CONNECTION_TYPES.find((x) => x.id === i.typeId);
     if (!ct || !ct.v1) throw invalid(`Unknown or unavailable connection type "${i.typeId}"`);
     for (const f of ct.fields) if (f.required && !i.values[f.name]?.trim()) throw invalid(`${f.label} is required`);
+    // URL settings are fetched by the server: only http(s), never file:, ftp:, gopher: ...
+    for (const f of ct.fields) {
+      const v = i.values[f.name]?.trim();
+      if (f.kind !== 'url' || !v) continue;
+      let u: URL;
+      try { u = new URL(v); } catch { throw invalid(`${f.label} is not a valid URL`); }
+      if (!/^https?:$/.test(u.protocol)) throw invalid(`${f.label} must start with http:// or https://`);
+    }
     const id = ulid();
     const config: Record<string, unknown> = { typeId: ct.id };
     for (const f of ct.fields) if (!f.secret && i.values[f.name] !== undefined && i.values[f.name] !== '') config[f.name] = i.values[f.name];
@@ -208,6 +217,7 @@ export class ConnectionService {
         const exp = cfg.expiresAt ? new Date(cfg.expiresAt) : r.headers.get('github-authentication-token-expiration') ? new Date(r.headers.get('github-authentication-token-expiration')!) : null;
         return r.ok ? { ok: true, detail: `token valid for ${((await r.json()) as { login?: string }).login ?? 'user'} (Copilot seat is verified on first run)`, expiresAt: exp } : { ok: false, detail: `GitHub rejected the token (${r.status})` };
       }
+      case 'cursor': return (await sec('api_key')) ? { ok: true, detail: 'key stored (Cursor has no key-check endpoint we can call; it is validated on the first run)' } : { ok: false, detail: 'missing API key' };
       case 'bedrock': return cfg.AWS_REGION && (await sec('AWS_ACCESS_KEY_ID')) && (await sec('AWS_SECRET_ACCESS_KEY')) ? { ok: true, detail: 'credentials stored (validated on first run)' } : { ok: false, detail: 'missing credentials' };
       case 'vertex': return cfg.ANTHROPIC_VERTEX_PROJECT_ID ? { ok: true, detail: 'project configured (uses ambient Google credentials)' } : { ok: false, detail: 'missing project' };
       case 'gateway': {
@@ -410,9 +420,10 @@ export class IntakeService {
   constructor(private s: Pick<Services, 'db' | 'orch' | 'defs' | 'contexts'>, private o: { log?: Logger; forges?: ForgeResolver; trackers?: TrackerResolver } = {}) {}
   private get db() { return this.s.db; }
 
-  private async factoriesForRepo(slug: string) {
-    const [owner, name] = slug.split('/');
-    const rows = await this.db.select({ f: t.factories, r: t.repositories }).from(t.repositories).innerJoin(t.factories, eq(t.repositories.factoryId, t.factories.id)).where(and(sql`lower(${t.repositories.owner}) = ${owner.toLowerCase()}`, sql`lower(${t.repositories.name}) = ${name.toLowerCase()}`, eq(t.factories.status, 'active')));
+  /** orgId limits the match to one organisation: an event proven (by its signature) to belong to org A must never reach org B's factories. */
+  private async factoriesForRepo(slug: string, orgId?: string) {
+    const [owner, name = ''] = slug.split('/');
+    const rows = await this.db.select({ f: t.factories, r: t.repositories }).from(t.repositories).innerJoin(t.factories, eq(t.repositories.factoryId, t.factories.id)).where(and(sql`lower(${t.repositories.owner}) = ${owner.toLowerCase()}`, sql`lower(${t.repositories.name}) = ${name.toLowerCase()}`, eq(t.factories.status, 'active'), ...(orgId ? [eq(t.factories.orgId, orgId)] : [])));
     return rows;
   }
 
@@ -420,11 +431,11 @@ export class IntakeService {
     return (await this.db.select().from(t.workItems).where(and(eq(t.workItems.factoryId, factoryId), eq(t.workItems.sourceType, type), eq(t.workItems.sourceRef, ref), sql`${t.workItems.state} not in ('COMPLETE','CANCELLED','FAILED')`)).orderBy(desc(t.workItems.createdAt)).limit(1))[0];
   }
 
-  async onForgeEvent(ev: ForgeEvent): Promise<IntakeResult[]> {
+  async onForgeEvent(ev: ForgeEvent, scope?: { orgId: string }): Promise<IntakeResult[]> {
     if (ev.type === 'ignored') return [{ handled: `ignored: ${ev.reason}` }];
     if (ev.type === 'config_pr') return [{ handled: 'config_pr' }];
     const out: IntakeResult[] = [];
-    for (const { f, r } of await this.factoriesForRepo(ev.repo)) {
+    for (const { f, r } of await this.factoriesForRepo(ev.repo, scope?.orgId)) {
       const active = await this.s.defs.getActive(f.id);
       if (!active) continue;
       const alias = active.definition.factory.alias ?? f.alias;

@@ -14,7 +14,8 @@ export interface AuthedUser {
   reauthAt?: number;
 }
 
-export interface SessionPayload { uid: string; exp: number; reauthAt?: number }
+/** iat (issued at, ms) lets a person or an admin end all earlier sessions (users.sessions_valid_after). */
+export interface SessionPayload { uid: string; exp: number; reauthAt?: number; iat?: number }
 
 const b64 = (b: Buffer | string) => Buffer.from(b).toString('base64url');
 
@@ -42,9 +43,11 @@ export const REAUTH_WINDOW_MS = 5 * 60_000;
 export class Auth {
   constructor(private db: Db, readonly secret: Buffer, readonly cfg: { devLogin: boolean; secureCookies: boolean; sessionHours: number }) {}
 
-  async load(uid: string, via: 'session' | 'pat', reauthAt?: number): Promise<AuthedUser | undefined> {
+  /** `fresh` is for a sign-in happening right now: there is no older session to check against the revocation time. */
+  async load(uid: string, via: 'session' | 'pat', reauthAt?: number, iat?: number, fresh = false): Promise<AuthedUser | undefined> {
     const [u] = await this.db.select().from(t.users).where(eq(t.users.id, uid));
     if (!u) return undefined;
+    if (via === 'session' && !fresh && u.sessionsValidAfter && (iat ?? 0) < u.sessionsValidAfter.getTime()) return undefined; // signed out everywhere since this session began
     const ms = await this.db.select().from(t.memberships).where(eq(t.memberships.userId, uid));
     const role = ms.filter((m) => !m.factoryId).map((m) => m.role as Role).sort((a, b) => ROLE_RANK[b] - ROLE_RANK[a])[0] ?? 'viewer';
     return { id: u.id, orgId: u.orgId, email: u.email, name: u.name, groups: u.groups, role, memberships: ms.map((m) => ({ factoryId: m.factoryId, role: m.role as Role })), via, reauthAt };
@@ -62,14 +65,19 @@ export class Auth {
       }
     }
     const sess = verifySession(this.secret, (req.cookies as Record<string, string> | undefined)?.[COOKIE]);
-    return sess ? this.load(sess.uid, 'session', sess.reauthAt) : undefined;
+    return sess ? this.load(sess.uid, 'session', sess.reauthAt, sess.iat) : undefined;
   }
 
   startSession(reply: FastifyReply, uid: string, reauthAt?: number) {
-    const exp = Date.now() + this.cfg.sessionHours * 3_600_000;
-    reply.setCookie(COOKIE, signSession(this.secret, { uid, exp, reauthAt }), { path: '/', httpOnly: true, sameSite: 'lax', secure: this.cfg.secureCookies, maxAge: this.cfg.sessionHours * 3600 });
+    const now = Date.now();
+    const exp = now + this.cfg.sessionHours * 3_600_000;
+    reply.setCookie(COOKIE, signSession(this.secret, { uid, exp, reauthAt, iat: now }), { path: '/', httpOnly: true, sameSite: 'lax', secure: this.cfg.secureCookies, maxAge: this.cfg.sessionHours * 3600 });
   }
   endSession(reply: FastifyReply) { reply.clearCookie(COOKIE, { path: '/' }); }
+  /** Invalidate every session of a user that began before now. */
+  async revokeSessions(userId: string): Promise<void> {
+    await this.db.update(t.users).set({ sessionsValidAfter: new Date(), updatedAt: new Date() }).where(eq(t.users.id, userId));
+  }
 
   /** role in a factory: the higher of the org-wide role and any factory-specific membership */
   roleFor(u: AuthedUser, factoryId?: string | null): Role {
@@ -95,7 +103,7 @@ export class Auth {
     const [first] = await this.db.select({ id: t.users.id }).from(t.users).limit(1);
     const existing = (await this.db.select().from(t.users).where(and(eq(t.users.orgId, org.id), eq(t.users.email, email.toLowerCase()))))[0];
     const u = existing ?? (await ensureUser(this.db, org.id, { email, name: name ?? email.split('@')[0], role: first ? 'member' : 'org_admin' }));
-    const au = await this.load(u.id, 'session');
+    const au = await this.load(u.id, 'session', undefined, undefined, true);
     if (!au) throw unauthorized();
     return au;
   }

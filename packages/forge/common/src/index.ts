@@ -12,7 +12,8 @@ export interface Forge {
   listRepos(query?: string): Promise<RepoInfo[]>;
   getRepo(owner: string, name: string): Promise<RepoInfo>;
   /** URL (with a short-lived credential) the worker uses to clone and push; never stored */
-  cloneAuth(owner: string, name: string): Promise<{ url: string; expiresAt?: Date }>;
+  /** `url` is always the clean repository URL (never contains credentials); `token` is passed to git per command, never stored. */
+  cloneAuth(owner: string, name: string): Promise<{ url: string; token?: string; expiresAt?: Date }>;
   openPullRequest(p: { owner: string; name: string; head: string; base: string; title: string; body: string; draft: boolean }): Promise<PullRequest>;
   updatePullRequest(owner: string, name: string, number: number, patch: { title?: string; body?: string; draft?: boolean; state?: 'open' | 'closed' }): Promise<PullRequest>;
   getPullRequest(owner: string, name: string, number: number): Promise<PullRequest>;

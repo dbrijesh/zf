@@ -16,7 +16,7 @@ export function registerRun(p: Command) {
   p.command('run')
     .description('Run one agent locally: materialise skills, write the preamble and context, run the harness, show events, print the result')
     .requiredOption('--agent <name>', 'agent name from the definition or its packs')
-    .option('--harness <type>', 'claude-code | codex | copilot | fake (default: the agent\'s own)')
+    .option('--harness <type>', 'claude-code | codex | copilot | cursor | fake (default: the agent\'s own)')
     .option('--repo <path>', 'repository folder to work in (a throwaway copy is made unless --in-place)', '.')
     .option('--prompt <text>', 'what to do', 'Do the work described in your role.')
     .option('--definition <path>', 'definition folder (default: --repo if it has zerovity.factory.yaml, else the 01 example)')
@@ -44,7 +44,7 @@ export function registerRun(p: Command) {
         m = /^agents\/([^/]+)\/skills\/([^/]+)\/(.+)$/.exec(pth); if (m) ((agentSkills[m[1]] ??= {})[m[2]] ??= {})[m[3]] = c;
       }
       const eff = effectiveSkills(o.agent, body, fm.skills, { packs: v.packs, factory: factorySkills, agent: agentSkills });
-      const harnessType = (o.harness ?? fm.harness?.type ?? v.definition?.factory.agentDefaults.harness?.type ?? 'claude-code') as 'claude-code' | 'codex' | 'copilot' | 'fake';
+      const harnessType = (o.harness ?? fm.harness?.type ?? v.definition?.factory.agentDefaults.harness?.type ?? 'claude-code') as 'claude-code' | 'codex' | 'copilot' | 'cursor' | 'fake';
 
       // working copy
       const work = o.inPlace ? repo : fs.mkdtempSync(path.join(os.tmpdir(), 'zf-run-'));
@@ -70,7 +70,7 @@ export function registerRun(p: Command) {
       w('.zerovity/context/CONTEXT.md', ctxParts.join('\n\n'));
 
       const prefix = MATERIALISE_TABLE[harnessType].instructions === 'prompt-prefix';
-      const spec: RunSpec = { runId: 'local', workItemId: 'LOCAL-1', agent: { name: o.agent, phase: fm.phase, body, skills: eff.skills, outputs: fm.outputs, harness: { type: harnessType, model: o.model ?? fm.harness?.model, reasoning: fm.harness?.reasoning }, mcpServers: [] }, prompt: prefix ? `${instructions}\n\n---\n\n${o.prompt}` : o.prompt, worktreePath: work, env: Object.fromEntries(Object.entries(process.env).filter(([k, val]) => val !== undefined && /^(ANTHROPIC_|OPENAI_|CODEX_|COPILOT_|GH_TOKEN|CLAUDE_|AWS_|GOOGLE_|CLOUD_ML|ZF_FAKE)/.test(k))) as Record<string, string>, limits: { maxMinutes: Number(o.maxMinutes), maxTokens: 2_000_000 } };
+      const spec: RunSpec = { runId: 'local', workItemId: 'LOCAL-1', agent: { name: o.agent, phase: fm.phase, body, skills: eff.skills, outputs: fm.outputs, harness: { type: harnessType, model: o.model ?? fm.harness?.model, reasoning: fm.harness?.reasoning }, mcpServers: [] }, prompt: prefix ? `${instructions}\n\n---\n\n${o.prompt}` : o.prompt, worktreePath: work, env: Object.fromEntries(Object.entries(process.env).filter(([k, val]) => val !== undefined && /^(ANTHROPIC_|OPENAI_|CODEX_|COPILOT_|CURSOR_|GH_TOKEN|CLAUDE_|AWS_|GOOGLE_|CLOUD_ML|ZF_FAKE)/.test(k))) as Record<string, string>, limits: { maxMinutes: Number(o.maxMinutes), maxTokens: 2_000_000 } };
 
       const events: NormalisedEvent[] = [];
       const sb = new LocalSandbox(work);

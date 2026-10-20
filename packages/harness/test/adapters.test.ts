@@ -127,3 +127,61 @@ describe('fake adapter', () => {
     expect(a.buildCommand(spec({ resumeSessionId: 's' }, { type: 'fake' })).env.ZF_FAKE_RESUME).toBe('s');
   });
 });
+
+describe('cursor (documented shapes; synthetic fixture)', () => {
+  const a = createAdapter('cursor');
+  const ev = replay(a, 'cursor/fixtures/basic-run.jsonl', '/workspace/work');
+  it('maps session, messages, tool calls, files, commands and the end', () => {
+    expect(a.extractSessionId(ev)).toBe('c1f0a7de-5b0e-4a63-9a1e-0f6d2f9c7a11');
+    expect(ev.find((e) => e.kind === 'session.started')).toMatchObject({ model: 'Claude 4 Sonnet' });
+    expect(ev.filter((e) => e.kind === 'message.assistant').map((e) => (e as { text: string }).text)).toEqual(["I'll read the README first, then create hello.txt.", 'done']);
+    expect(ev.filter((e) => e.kind === 'tool.call').map((e) => (e as { tool: string }).tool)).toEqual(['read', 'write', 'shell', 'shell']);
+    expect(ev.find((e) => e.kind === 'file.changed')).toEqual({ kind: 'file.changed', path: 'hello.txt', op: 'add' });
+    expect(ev.filter((e) => e.kind === 'tool.result').map((e) => (e as { ok: boolean }).ok)).toEqual([true, true, true, false]);
+    expect(ev.filter((e) => e.kind === 'command.run')).toEqual([{ kind: 'command.run', command: 'cat hello.txt', exitCode: 0 }, { kind: 'command.run', command: 'false', exitCode: 1 }]);
+    expect(ev[ev.length - 1]).toEqual({ kind: 'session.ended', status: 'success' });
+  });
+  it('tool results pair with their calls by call_id', () => {
+    const calls = ev.filter((e) => e.kind === 'tool.call').map((e) => (e as { id: string }).id);
+    const results = ev.filter((e) => e.kind === 'tool.result').map((e) => (e as { id: string }).id);
+    expect(results).toEqual(calls);
+  });
+  it('reports estimated tokens (the CLI gives none) and no invented cost', () => {
+    const usage = (prompt: string) => { const b = createAdapter('cursor'); b.buildCommand(spec({ prompt }, { type: 'cursor' })); return b.extractUsage(replay(b, 'cursor/fixtures/basic-run.jsonl')); };
+    const small = usage('hi'), big = usage('explain the whole repository in great detail '.repeat(200));
+    expect(small.outputTokens).toBeGreaterThan(0);
+    expect(big.inputTokens).toBeGreaterThan(small.inputTokens + 500); // the prompt size is counted
+    expect(big.outputTokens).toBe(small.outputTokens);
+    expect(small.costUsd).toBeUndefined();
+  });
+  it('builds a headless command with force, trust, model, resume and the API key only via env', () => {
+    const c = createAdapter('cursor').buildCommand(spec({ resumeSessionId: 'chat-1', env: { CURSOR_API_KEY: 'k' } }, { type: 'cursor', model: 'auto' }));
+    expect(c.args).toEqual(expect.arrayContaining(['-p', 'do the thing', '--output-format', 'stream-json', '--force', '--trust', '--model', 'auto', '--resume', 'chat-1']));
+    expect(c.args.join(' ')).not.toContain('CURSOR_API_KEY');
+    expect(c.args).not.toContain('k');
+    expect(c.env.CURSOR_API_KEY).toBe('k');
+    expect(c.args).not.toContain('--approve-mcps');
+  });
+  it('writes deny rules, and MCP config only when the agent has MCP servers', () => {
+    const none = createAdapter('cursor').buildCommand(spec({}, { type: 'cursor' }));
+    expect(Object.keys(none.files ?? {})).toEqual(['.cursor/cli.json']);
+    expect(JSON.parse(none.files!['.cursor/cli.json']).permissions.deny).toEqual(expect.arrayContaining(['Shell(gh)', 'Read(.env*)']));
+    const withMcp = createAdapter('cursor').buildCommand(spec({ mcpServers: { jira: { url: 'https://mcp.example/jira', headers: { Authorization: 'Bearer t' } } } }, { type: 'cursor' }));
+    expect(withMcp.args).toContain('--approve-mcps');
+    expect(JSON.parse(withMcp.files!['.cursor/mcp.json']).mcpServers.jira).toEqual({ url: 'https://mcp.example/jira', headers: { Authorization: 'Bearer t' } });
+  });
+  it('a follow-up resumes the same chat', () => {
+    const c = createAdapter('cursor').sendFollowUp!('chat-9', 'please fix', spec({}, { type: 'cursor' }));
+    expect(c.args).toEqual(expect.arrayContaining(['-p', 'please fix', '--resume', 'chat-9']));
+  });
+  it('an error result surfaces as an error event and an error end', () => {
+    const b = createAdapter('cursor');
+    const out = b.parseLine('{"type":"result","subtype":"success","is_error":true,"result":"boom","session_id":"s"}');
+    expect(out.map((e) => e.kind)).toEqual(['usage', 'error', 'session.ended']);
+    expect(out[2]).toEqual({ kind: 'session.ended', status: 'error' });
+  });
+  it('unknown tools and malformed lines never throw', () => {
+    const b = createAdapter('cursor');
+    expect(() => { b.parseLine('not json'); b.parseLine('{"type":"tool_call","subtype":"started","call_id":"z","tool_call":{"mysteryToolCall":{"args":{"q":1}}}}'); b.parseLine('{"type":"tool_call","subtype":"completed","call_id":"z","tool_call":{"mysteryToolCall":{"args":{},"result":{"success":{"x":1}}}}}'); }).not.toThrow();
+  });
+});

@@ -8,7 +8,8 @@ import { assembleContext, bundleToFiles, repoConventionItems, REPO_CONVENTION_FI
 import { materialiseSkills, MATERIALISE_TABLE } from '@zerovity/skills';
 import type { Orchestrator, RunPlan, RunOutcome } from '@zerovity/orchestrator';
 import type { ForgeResolver } from '@zerovity/forge-common';
-import { prepareWorkspace, commitAll, pushBranch, diffAgainst, changedFiles, humanCommits } from './git';
+import { prepareWorkspace, commitAll, pushBranch, diffAgainst, changedFiles, humanCommits, agentGitEnv } from './git';
+import { Overlay, recoverOverlay } from './overlay';
 import { LocalSandbox, DockerSandbox, startEgressProxy, type Sandbox } from './sandbox';
 
 export interface ExecutorDeps {
@@ -20,6 +21,15 @@ export interface ExecutorDeps {
 }
 
 const FLUSH_MS = 250;
+
+/** Give a folder tree to a uid:gid (only meaningful when the worker runs as root, for the non-root container user). */
+function chownTree(dir: string, uid: number, gid: number) {
+  try { fs.chownSync(dir, uid, gid); } catch { return; }
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const p = path.join(dir, e.name);
+    try { if (e.isSymbolicLink()) fs.lchownSync(p, uid, gid); else if (e.isDirectory()) chownTree(p, uid, gid); else fs.chownSync(p, uid, gid); } catch { /* skip */ }
+  }
+}
 const MAX_ARTIFACT = 5 * 1024 * 1024;
 
 /** Execute one planned run end to end and return its outcome. Never throws for run-level problems. */
@@ -47,6 +57,7 @@ export async function executeRun(plan: RunPlan, deps: ExecutorDeps): Promise<Run
   const timer = setInterval(() => void flush(), FLUSH_MS);
 
   let sandbox: Sandbox | undefined;
+  let overlayRef: Overlay | undefined;
   let proxy: Awaited<ReturnType<typeof startEgressProxy>> | undefined;
   let cancelFlag = false, budgetHit = false;
   const cancelPoll = setInterval(() => { void orch.isCancelRequested(runId).then((c) => { if (c) cancelFlag = true; }).catch(() => undefined); }, 1500);
@@ -56,12 +67,16 @@ export async function executeRun(plan: RunPlan, deps: ExecutorDeps): Promise<Run
     status(`preparing workspace for ${plan.workItem.shortId} on ${plan.workItem.branch}`);
     const mat = materialiseSkills(plan.agent.harness.type, plan.skillFiles.map((s) => ({ name: s.name, files: s.files })));
     let cloneUrl: string | undefined;
+    let remoteAuth: { url: string; token?: string } | undefined;
     if (plan.repo) {
       const forge = await deps.forges?.forRepo(plan.factory.id, plan.repo);
-      if (forge && forge.kind !== 'local') cloneUrl = (await forge.cloneAuth(plan.repo.owner, plan.repo.name)).url || undefined;
-      else cloneUrl = plan.repo.cloneUrl ?? undefined;
+      if (forge && forge.kind !== 'local') {
+        const cred = await forge.cloneAuth(plan.repo.owner, plan.repo.name);
+        cloneUrl = cred.url || undefined;
+        if (cred.url) remoteAuth = { url: cred.url, token: cred.token };
+      } else cloneUrl = plan.repo.cloneUrl ?? undefined;
     }
-    const ws = await prepareWorkspace({ dir: workDir, branch: plan.workItem.branch, defaultBranch: plan.repo?.defaultBranch ?? 'main', cloneUrl, exclude: [...mat.excludes, ...Object.values(MATERIALISE_TABLE).map((x) => `/${x.skillsDir}/`)] });
+    const ws = await prepareWorkspace({ dir: workDir, branch: plan.workItem.branch, defaultBranch: plan.repo?.defaultBranch ?? 'main', cloneUrl, auth: remoteAuth ? { token: remoteAuth.token } : undefined, exclude: [...mat.excludes, ...Object.values(MATERIALISE_TABLE).map((x) => `/${x.skillsDir}/`)] });
     if (!ws.usedGit) status('git is not installed on this machine: running in a plain folder (no branch, commit or push)');
 
     const write = (rel: string, content: string) => {
@@ -70,9 +85,14 @@ export async function executeRun(plan: RunPlan, deps: ExecutorDeps): Promise<Run
       fs.mkdirSync(path.dirname(target), { recursive: true });
       fs.writeFileSync(target, content);
     };
-    // skills: wipe previous materialisation for a clean, exact set
-    for (const d of new Set(Object.values(MATERIALISE_TABLE).map((x) => x.skillsDir))) fs.rmSync(path.join(workDir, d), { recursive: true, force: true });
-    for (const [rel, c] of Object.entries(mat.files)) write(rel, c);
+    // Skills and tool config are an overlay for this run only: whatever the repository already has at those paths comes back
+    // before anything is committed, and nothing (tokens in MCP config included) outlives the run.
+    const journal = path.join(workDir, '.zerovity', 'run', 'overlay.json');
+    const recovered = recoverOverlay(journal);
+    if (recovered) status(`restored ${recovered} file(s) left by an interrupted run`);
+    const overlay = new Overlay(workDir, journal);
+    overlayRef = overlay;
+    for (const [rel, c] of Object.entries(mat.files)) overlay.write(rel, c);
     write(INSTRUCTIONS_PATH, plan.instructions);
     write(RESULT_SCHEMA_PATH, plan.resultSchema);
     fs.rmSync(path.join(workDir, RESULT_PATH), { force: true });
@@ -90,7 +110,11 @@ export async function executeRun(plan: RunPlan, deps: ExecutorDeps): Promise<Run
     if (deps.sandbox === 'docker') {
       const net = plan.runner.network;
       if (net.egress === 'allowlist' && !deps.docker?.network) proxy = await startEgressProxy(() => net.allow);
-      sandbox = await DockerSandbox.create({ image: plan.runner.image, hostWorkRoot: toHost(wsRoot), hostHome: toHost(path.join(wsRoot, 'home')), resources: plan.runner.resources, egress: net.egress, network: deps.docker?.network, user: deps.docker?.user, proxyUrl: proxy ? `http://${deps.docker?.proxyHost ?? 'host.docker.internal'}:${proxy.port}` : undefined });
+      // the agent runs as a non-root user that must own the workspace: use the worker's own uid, or hand the tree to 1000 when the worker is root
+      const uid = process.getuid?.(), gid = process.getgid?.();
+      const user = deps.docker?.user ?? (uid && uid !== 0 ? `${uid}:${gid ?? uid}` : '1000:1000');
+      if (uid === 0) chownTree(wsRoot, 1000, 1000);
+      sandbox = await DockerSandbox.create({ image: plan.runner.image, hostWorkRoot: toHost(wsRoot), hostHome: toHost(path.join(wsRoot, 'home')), resources: plan.runner.resources, egress: net.egress, network: deps.docker?.network, user, proxyUrl: proxy ? `http://${deps.docker?.proxyHost ?? 'host.docker.internal'}:${proxy.port}` : undefined });
     } else sandbox = new LocalSandbox(workDir);
     const workPath = sandbox.workPath;
 
@@ -109,16 +133,20 @@ export async function executeRun(plan: RunPlan, deps: ExecutorDeps): Promise<Run
     }
 
     /* ---------- run the harness ---------- */
+    // the agent's git: factory identity, and none of the operator's credential helpers or global config
+    const gitConfigHost = path.join(wsRoot, 'agent.gitconfig');
+    fs.writeFileSync(gitConfigHost, '[safe]\n\tdirectory = *\n');
+    const gitEnv = agentGitEnv(deps.sandbox === 'docker' ? '/workspace/agent.gitconfig' : gitConfigHost);
     const prefix = MATERIALISE_TABLE[plan.agent.harness.type].instructions === 'prompt-prefix';
     const spec: RunSpec = {
       runId, workItemId: plan.workItem.shortId, agent: plan.agent, prompt: prefix ? `${plan.instructions}\n\n---\n\n${plan.prompt}` : plan.prompt, worktreePath: workPath,
       env: plan.env, mcpServers: plan.mcpServers, resumeSessionId: plan.resumeSessionId, limits: { maxMinutes: plan.limits.maxMinutes, maxTokens: plan.limits.maxTokens }, extraAllowedShell: [],
     };
     const runCommand = async (cmd: CommandSpec, label: string): Promise<{ exitCode: number | null; timedOut: boolean; idle: boolean; cancelled: boolean }> => {
-      for (const [rel, c] of Object.entries(cmd.files ?? {})) write(rel, c);
+      for (const [rel, c] of Object.entries(cmd.files ?? {})) overlay.write(rel, c);
       status(label);
       return sandbox!.exec(cmd.cmd, cmd.args, {
-        cwd: workPath, env: cmd.env, stdin: cmd.stdin, timeoutMs: plan.limits.maxMinutes * 60_000, idleMs: plan.limits.idleMinutes * 60_000,
+        cwd: workPath, env: { ...cmd.env, ...gitEnv }, stdin: cmd.stdin, timeoutMs: plan.limits.maxMinutes * 60_000, idleMs: plan.limits.idleMinutes * 60_000,
         isCancelled: () => cancelFlag || budgetHit,
         onLine: (line, stream) => {
           if (stream === 'stderr') { stderrTail.push(redactText(line).slice(0, 300)); if (stderrTail.length > 25) stderrTail.shift(); return; }
@@ -173,6 +201,7 @@ export async function executeRun(plan: RunPlan, deps: ExecutorDeps): Promise<Run
 
     /* ---------- post processing: artifacts, git, diff ---------- */
     async function finishWith(o: RunOutcome): Promise<RunOutcome> {
+      overlay.restore(); // before the commit: skills and tool config must never be committed or left behind
       await uploadOut(deps, runId, workDir);
       if (o.status === 'done' && o.result && ws.usedGit) {
         try {
@@ -192,9 +221,9 @@ export async function executeRun(plan: RunPlan, deps: ExecutorDeps): Promise<Run
             if (hc > 0) await markHuman(orch, plan.workItem.id);
           }
           if (ws.hasRemote || (cloneUrl && plan.repo)) {
-            let pushUrl: string | undefined;
-            if (plan.repo) { const forge = await deps.forges?.forRepo(plan.factory.id, plan.repo); if (forge && forge.kind !== 'local') pushUrl = (await forge.cloneAuth(plan.repo.owner, plan.repo.name)).url || undefined; }
-            const pushed = await pushBranch(workDir, plan.workItem.branch, pushUrl);
+            let push: { url: string; token?: string } | undefined;
+            if (plan.repo) { const forge = await deps.forges?.forRepo(plan.factory.id, plan.repo); if (forge && forge.kind !== 'local') { const cred = await forge.cloneAuth(plan.repo.owner, plan.repo.name); if (cred.url) push = { url: cred.url, token: cred.token }; } }
+            const pushed = await pushBranch(workDir, plan.workItem.branch, push);
             if (pushed) status(`pushed ${plan.workItem.branch}`);
           }
         } catch (e) {
@@ -215,6 +244,7 @@ export async function executeRun(plan: RunPlan, deps: ExecutorDeps): Promise<Run
   } finally {
     clearInterval(timer);
     clearInterval(cancelPoll);
+    overlayRef?.restore();
     await flush();
     await flushing;
     await sandbox?.destroy().catch(() => undefined);

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { estimateTokens } from '@zerovity/core';
-import { assembleContext, bundleToFiles, convertFile, htmlToMarkdown, isPrivateIp, fetchSnapshot, buildItemBody, parseDelimited, qaMarkdown, repoConventionItems, type ContextItemRecord } from '../src';
+import { assembleContext, bundleToFiles, convertFile, htmlToMarkdown, isPrivateIp, fetchSnapshot, _pinnedGet, buildItemBody, parseDelimited, qaMarkdown, repoConventionItems, type ContextItemRecord } from '../src';
 
 let n = 0;
 const item = (o: Partial<ContextItemRecord> & { title: string }): ContextItemRecord => {
@@ -153,4 +153,34 @@ describe('conversion and snapshots', () => {
     expect(s.markdown).toContain('Two approvers.');
     expect(s.title).toBe('Wiki');
   });
-});
+
+  it('blocks every spelling of a private IPv6 address, including IPv4-mapped hex forms', () => {
+    for (const ip of ['::ffff:127.0.0.1', '::ffff:7f00:1', '::ffff:a9fe:a9fe', '0:0:0:0:0:ffff:c0a8:1', 'fe80::1', 'febf::1', 'fec0::1', 'ff02::1', '::', '64:ff9b::a00:1', '::10.0.0.1', 'not-an-ip']) expect(isPrivateIp(ip), ip).toBe(true);
+    for (const ip of ['198.19.0.1', '192.0.0.8', '100.64.0.1', '224.0.0.1']) expect(isPrivateIp(ip), ip).toBe(true);
+    for (const ip of ['2606:4700:4700::1111', '::ffff:8.8.8.8', '8.8.8.8', '1.1.1.1']) expect(isPrivateIp(ip), ip).toBe(false);
+  });
+  it('re-checks every redirect hop: a public page cannot bounce the fetch to an internal address', async () => {
+    const seen: string[] = [];
+    const f = (async (u: string) => { seen.push(u); return new Response('', { status: 302, headers: { location: 'http://169.254.169.254/latest/meta-data' } }); }) as typeof fetch;
+    const lookup = async (h: string) => (h === 'example.com' ? ['93.184.216.34'] : ['169.254.169.254']);
+    await expect(fetchSnapshot('https://example.com/go', { fetchImpl: f, lookup })).rejects.toThrow(/private/);
+    expect(seen).toEqual(['https://example.com/go']); // the internal address was never requested
+  });
+  it('follows a normal redirect chain, and stops redirect loops', async () => {
+    const f = (async (u: string) => (u.endsWith('/a') ? new Response('', { status: 301, headers: { location: '/b' } }) : new Response('# Final\nbody', { headers: { 'content-type': 'text/markdown' } }))) as typeof fetch;
+    const s = await fetchSnapshot('https://example.com/a', { fetchImpl: f, lookup: async () => ['93.184.216.34'] });
+    expect(s.finalUrl).toBe('https://example.com/b');
+    expect(s.title).toBe('Final');
+    const loop = (async () => new Response('', { status: 302, headers: { location: '/again' } })) as typeof fetch;
+    await expect(fetchSnapshot('https://example.com/x', { fetchImpl: loop, lookup: async () => ['93.184.216.34'] })).rejects.toThrow(/redirects/);
+  });
+  it('the pinned transport connects to the validated address while keeping the real Host name (DNS rebinding)', async () => {
+    const http = await import('node:http');
+    const server = http.createServer((req, res) => res.end(JSON.stringify({ host: req.headers.host, enc: req.headers['accept-encoding'] }))).listen(0, '127.0.0.1');
+    await new Promise((r) => server.once('listening', r));
+    const port = (server.address() as import('node:net').AddressInfo).port;
+    // "rebind.test" does not resolve at all: only the pinned address can have been used
+    const r = await _pinnedGet(new URL(`http://rebind.test:${port}/x`), '127.0.0.1', {}, new AbortController().signal);
+    expect(JSON.parse(r.body.toString())).toEqual({ host: `rebind.test:${port}`, enc: 'identity' });
+    server.close();
+  });});

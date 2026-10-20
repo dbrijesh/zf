@@ -97,6 +97,7 @@
                 "claude-code",
                 "codex",
                 "copilot",
+                "cursor",
                 "fake"
               ]
             },
@@ -288,6 +289,7 @@
                   "claude-code",
                   "codex",
                   "copilot",
+                  "cursor",
                   "fake"
                 ]
               },

@@ -188,6 +188,7 @@ The factory has an MCP server at `<address>/mcp`. In **Settings** you will find 
 | Run fails with an unknown model | The agent has a model from another harness. Set the model in the definition. |
 | Run stops after being quiet | Raise `idleTimeoutMinutes`, then Retry. |
 | Push fails | Make sure git is installed and on the PATH of the process that runs the factory. |
+| The factory refuses to start: "dev login is enabled but ZF_PUBLIC_URL is not a local address" | Dev login lets anyone sign in as anyone, so it is blocked on public addresses. Configure OIDC and set ZF_DEV_LOGIN=0, or for a short supervised trial set ZF_ALLOW_PUBLIC_DEV_LOGIN=1. |
 | Public address stopped working | Quick tunnel addresses change on restart. Update `ZF_PUBLIC_URL` and the GitHub App webhook URL, or use a permanent tunnel. |
 | Page looks stale after an update | Hard refresh (Ctrl+Shift+R). |
 

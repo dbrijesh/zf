@@ -29,14 +29,32 @@ function setCache(res: unknown, v: string) { const r = res as { header?: (k: str
 
 export function makeConfig(c: Partial<ApiConfig> = {}): ApiConfig {
   const env = process.env;
-  const oidc = env.OIDC_ISSUER && env.OIDC_CLIENT_ID ? { issuer: env.OIDC_ISSUER, clientId: env.OIDC_CLIENT_ID, clientSecret: env.OIDC_CLIENT_SECRET ?? '', scopes: env.OIDC_SCOPES ?? 'openid profile email', groupsClaim: env.OIDC_GROUPS_CLAIM ?? 'groups', adminGroups: (env.OIDC_ADMIN_GROUPS ?? '').split(',').filter(Boolean), approverGroups: (env.OIDC_APPROVER_GROUPS ?? '').split(',').filter(Boolean), ownerGroups: (env.OIDC_OWNER_GROUPS ?? '').split(',').filter(Boolean) } : undefined;
+  const oidc = env.OIDC_ISSUER && env.OIDC_CLIENT_ID ? { issuer: env.OIDC_ISSUER, clientId: env.OIDC_CLIENT_ID, clientSecret: env.OIDC_CLIENT_SECRET ?? '', scopes: env.OIDC_SCOPES ?? 'openid profile email', groupsClaim: env.OIDC_GROUPS_CLAIM ?? 'groups', adminGroups: (env.OIDC_ADMIN_GROUPS ?? '').split(',').filter(Boolean), approverGroups: (env.OIDC_APPROVER_GROUPS ?? '').split(',').filter(Boolean), ownerGroups: (env.OIDC_OWNER_GROUPS ?? '').split(',').filter(Boolean), allowedDomains: (env.OIDC_ALLOWED_DOMAINS ?? '').toLowerCase().split(',').map((s) => s.trim()).filter(Boolean), bootstrapAdmin: env.OIDC_BOOTSTRAP_ADMIN?.toLowerCase() || undefined } : undefined;
   return { devLogin: env.ZF_DEV_LOGIN ? env.ZF_DEV_LOGIN === '1' : !oidc && env.NODE_ENV !== 'production', publicUrl: env.ZF_PUBLIC_URL ?? `http://localhost:${env.PORT ?? 8787}`, version: '0.1.0', oidc, ...c };
+}
+
+/** localhost, loopback and *.localhost / *.local names: addresses that other people cannot reach from the internet. */
+export function isLocalUrl(u: string): boolean {
+  try { const h = new URL(u).hostname.toLowerCase().replace(/^\[|\]$/g, ''); return h === 'localhost' || h === '::1' || /^127\./.test(h) || h.endsWith('.localhost') || h.endsWith('.local'); } catch { return false; }
+}
+
+/**
+ * Dev login signs in as ANY email without a password. It exists for local trials only: refuse to start with it on a public
+ * address (a tunnel or a server) unless the operator says so explicitly, because anyone who can reach the site could then
+ * sign in as the administrator.
+ */
+export function assertDevLoginSafe(cfg: Pick<ApiConfig, 'devLogin' | 'publicUrl'>, env: NodeJS.ProcessEnv = process.env): void {
+  if (cfg.devLogin && !isLocalUrl(cfg.publicUrl) && env.ZF_ALLOW_PUBLIC_DEV_LOGIN !== '1') {
+    throw new Error(`Refusing to start: dev login is enabled but ZF_PUBLIC_URL (${cfg.publicUrl}) is not a local address. Anyone who can reach it could sign in as any user, including the administrator. Configure OIDC (OIDC_ISSUER, OIDC_CLIENT_ID, ...) and set ZF_DEV_LOGIN=0, or set ZF_ALLOW_PUBLIC_DEV_LOGIN=1 to accept this risk for a short trial.`);
+  }
 }
 
 /** Assemble the Fastify app (spec 3: apps/api). Everything under /api/v1 except /health, /auth, /webhooks and /schemas needs a session or PAT. */
 export async function buildApp(o: BuildOptions): Promise<{ app: FastifyInstance; ctx: AppCtx }> {
   const { services: s } = o;
   const cfg = makeConfig(o.cfg);
+  assertDevLoginSafe(cfg);
+  if (cfg.devLogin && !isLocalUrl(cfg.publicUrl)) s.log.warn('DEV LOGIN IS ON FOR A PUBLIC ADDRESS (ZF_ALLOW_PUBLIC_DEV_LOGIN=1): anyone who can reach this site can sign in as any user');
   const secret = o.sessionSecret ?? s.sessionSecret;
   const auth = new Auth(s.db, secret, { devLogin: cfg.devLogin, secureCookies: cfg.publicUrl.startsWith('https://'), sessionHours: Number(process.env.ZF_SESSION_HOURS ?? 12) });
   const conns = new ConnectionService(s);
@@ -81,7 +99,15 @@ export async function buildApp(o: BuildOptions): Promise<{ app: FastifyInstance;
     if (PUBLIC.some((r) => r.test(url))) return;
     if (!u) throw new ZfError('unauthorized', 'Authentication required', 401);
   });
-  app.addHook('onSend', async (_req, reply) => { reply.header('x-content-type-options', 'nosniff'); reply.header('referrer-policy', 'same-origin'); });
+  const https = cfg.publicUrl.startsWith('https://');
+  app.addHook('onSend', async (_req, reply) => {
+    reply.header('x-content-type-options', 'nosniff');
+    reply.header('referrer-policy', 'same-origin');
+    reply.header('x-frame-options', 'DENY'); // the app is never embedded (clickjacking)
+    if (!reply.getHeader('content-security-policy')) reply.header('content-security-policy', "frame-ancestors 'none'; base-uri 'self'; object-src 'none'");
+    reply.header('permissions-policy', 'camera=(), microphone=(), geolocation=()');
+    if (https) reply.header('strict-transport-security', 'max-age=15552000; includeSubDomains');
+  });
 
   app.get('/api/v1/health', async () => ({ ok: true, version: cfg.version, time: new Date().toISOString() }));
   app.get('/api/v1/ready', async (_req, reply) => {

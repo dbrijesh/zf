@@ -1,7 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { eq, asc } from 'drizzle-orm';
 import { tables as t, verifyAudit } from '@zerovity/db';
+import fs from 'node:fs';
+import path from 'node:path';
 import { setup, type Harness } from './helpers';
+import { git, gitAvailable } from '../src/git';
 
 let h: Harness;
 beforeAll(async () => { h = await setup(); }, 120_000);
@@ -190,5 +193,21 @@ describe('budgets and concurrency', () => {
     const [after] = await h.s.db.select().from(t.workItems).where(eq(t.workItems.id, wi.id));
     expect(after.budgetUsd).toBeGreaterThan(40);
     await h.s.orch.cancelWorkItem(wi.id, 'test');
+  });
+});
+
+describe.skipIf(!gitAvailable())('run files do not outlive the run (needs git installed)', () => {
+  it('skills and tool config are gone from the clone after the runs, nothing of them was committed, and the factory identity was used', async () => {
+    const [wi] = await h.s.db.select().from(t.workItems).limit(1);
+    const work = path.join(h.tmp, 'workspaces', wi.shortId, 'work');
+    expect(fs.existsSync(path.join(work, '.git'))).toBe(true);
+    for (const d of ['.claude/skills', '.agents/skills', '.github/skills', '.cursor']) expect(fs.existsSync(path.join(work, d)), d).toBe(false);
+    expect(fs.existsSync(path.join(work, '.zerovity', 'run', 'overlay.json'))).toBe(false); // the crash journal is removed on a clean finish
+    const tracked = (await git(work, ['ls-files'])).stdout;
+    expect(tracked).not.toMatch(/\.claude\/skills|\.agents\/skills|\.cursor|\.zerovity/);
+    const authors = (await git(work, ['log', '--format=%ae'])).stdout.split('\n').filter(Boolean);
+    expect(authors.length).toBeGreaterThan(0);
+    expect(new Set(authors)).toEqual(new Set(['factory@zerovity.local']));
+    expect(fs.existsSync(path.join(h.tmp, 'workspaces', wi.shortId, 'agent.gitconfig'))).toBe(true); // the agent's isolated git config
   });
 });

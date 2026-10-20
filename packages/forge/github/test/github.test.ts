@@ -60,7 +60,7 @@ describe('GitHubForge', () => {
   });
   it('clone URL carries a short-lived token that is never persisted by us', async () => {
     const { forge } = setup([]);
-    expect((await forge.cloneAuth('a', 'b')).url).toBe('https://x-access-token:ghs_x@github.com/a/b.git');
+    expect(await forge.cloneAuth('a', 'b')).toMatchObject({ url: 'https://github.com/a/b.git', token: 'ghs_x' }); // the URL never carries the token
   });
   it('lists installation repositories with search and reads files', async () => {
     const repo = (n: string) => ({ name: n, full_name: `a/${n}`, default_branch: 'main', clone_url: `https://github.com/a/${n}.git`, private: true, owner: { login: 'a' } });
@@ -75,7 +75,7 @@ describe('GitHubForge', () => {
     const forge = GitHubApp.withToken('pat123', 'https://ghe.corp/api/v3', f);
     await forge.listRepos();
     expect(calls[0].auth).toBe('token pat123');
-    expect((await forge.cloneAuth('a', 'b')).url).toBe('https://x-access-token:pat123@ghe.corp/a/b.git');
+    expect(await forge.cloneAuth('a', 'b')).toMatchObject({ url: 'https://ghe.corp/a/b.git', token: 'pat123' });
   });
 });
 

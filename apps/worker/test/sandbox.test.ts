@@ -90,10 +90,10 @@ describe.skipIf(!gitAvailable())('git workspace (needs git installed)', () => {
     const ws = await prepareWorkspace({ dir: path.join(dir, 'work'), branch: 'zerovity/zf-2-x', defaultBranch: 'main', exclude: [] });
     fs.writeFileSync(path.join(ws.dir, 'a.txt'), '1');
     await commitAll(ws.dir, 'one');
-    expect(await pushBranch(ws.dir, 'zerovity/zf-2-x', bare)).toBe(true);
+    expect(await pushBranch(ws.dir, 'zerovity/zf-2-x', { url: bare })).toBe(true);
     fs.writeFileSync(path.join(ws.dir, 'a.txt'), '2');
     await commitAll(ws.dir, 'two');
-    expect(await pushBranch(ws.dir, 'zerovity/zf-2-x', bare)).toBe(true);
+    expect(await pushBranch(ws.dir, 'zerovity/zf-2-x', { url: bare })).toBe(true);
     const head = (await git(bare, ['rev-parse', 'refs/heads/zerovity/zf-2-x'])).stdout.trim();
     expect(head).toBe((await git(ws.dir, ['rev-parse', 'HEAD'])).stdout.trim());
     fs.rmSync(dir, { recursive: true, force: true });

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import { and, asc, desc, eq, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { tables as t, verifyAudit, readChain } from '@zerovity/db';
 import { toCsv, toJsonl } from '@zerovity/audit';
 import { notFound, invalid, ulid, ResultSchema, type RunResult, type Role, ROLES } from '@zerovity/core';
@@ -44,7 +44,8 @@ export async function coreRoutes(app0: FastifyInstance, ctx: AppCtx) {
     const created = await ensureUser(db, u.orgId, { email: req.body.email, name: req.body.name, role: req.body.role as Role, groups: req.body.groups, factoryId: req.body.factoryId ?? null });
     const has = await db.select().from(t.memberships).where(and(eq(t.memberships.userId, created.id), eq(t.memberships.orgId, u.orgId)));
     if (!has.some((m) => (m.factoryId ?? null) === (req.body.factoryId ?? null))) await db.insert(t.memberships).values({ id: ulid(), userId: created.id, orgId: u.orgId, factoryId: req.body.factoryId ?? null, role: req.body.role });
-    else await db.update(t.memberships).set({ role: req.body.role }).where(and(eq(t.memberships.userId, created.id), eq(t.memberships.orgId, u.orgId)));
+    // change only the membership for the SAME scope (this factory, or org-wide), never every membership of the person
+    else await db.update(t.memberships).set({ role: req.body.role }).where(and(eq(t.memberships.userId, created.id), eq(t.memberships.orgId, u.orgId), req.body.factoryId ? eq(t.memberships.factoryId, req.body.factoryId) : isNull(t.memberships.factoryId)));
     if (req.body.groups) await db.update(t.users).set({ groups: req.body.groups }).where(eq(t.users.id, created.id));
     await s.orch.audit(u.orgId, u.id, 'member.upserted', req.body.email, { role: req.body.role, factoryId: req.body.factoryId ?? null }).catch(() => undefined);
     return { id: created.id };
@@ -53,9 +54,22 @@ export async function coreRoutes(app0: FastifyInstance, ctx: AppCtx) {
     const u = user(req);
     auth.need(u, 'org_admin');
     if (req.params.id === u.id) throw invalid('You cannot remove yourself');
+    // only people in the caller's own organisation
+    const [target] = await db.select({ id: t.users.id }).from(t.users).where(and(eq(t.users.id, req.params.id), eq(t.users.orgId, u.orgId)));
+    if (!target) throw notFound('Member', req.params.id);
     await db.delete(t.memberships).where(eq(t.memberships.userId, req.params.id));
     await db.delete(t.personalAccessTokens).where(eq(t.personalAccessTokens.userId, req.params.id));
     await db.delete(t.users).where(and(eq(t.users.id, req.params.id), eq(t.users.orgId, u.orgId)));
+    return { ok: true };
+  });
+  /** End every session of a person (a lost laptop, a suspected leak). Their access tokens are separate: delete those too if needed. */
+  app.post('/members/:id/revoke-sessions', { schema: { params: IdP, response: { 200: Ok } } }, async (req) => {
+    const u = user(req);
+    auth.need(u, 'org_admin');
+    const [target] = await db.select({ id: t.users.id }).from(t.users).where(and(eq(t.users.id, req.params.id), eq(t.users.orgId, u.orgId)));
+    if (!target) throw notFound('Member', req.params.id);
+    await auth.revokeSessions(target.id);
+    await s.orch.audit(u.orgId, u.id, 'member.sessions_revoked', target.id, {}).catch(() => undefined);
     return { ok: true };
   });
 
@@ -161,7 +175,9 @@ export async function coreRoutes(app0: FastifyInstance, ctx: AppCtx) {
     if (!buf) throw notFound('Artifact', req.query.name);
     const ext = req.query.name.split('.').pop()?.toLowerCase() ?? '';
     const type = { md: 'text/markdown', json: 'application/json', log: 'text/plain', txt: 'text/plain', png: 'image/png', jpg: 'image/jpeg', patch: 'text/x-diff' }[ext] ?? 'application/octet-stream';
-    return reply.header('content-type', `${type}; charset=utf-8`).header('x-content-type-options', 'nosniff').header('content-disposition', `inline; filename="${req.query.name.split('/').pop()}"`).send(buf);
+    const fileName = (req.query.name.split('/').pop() ?? 'artifact').replace(/[^\w.\- ]/g, '_');
+    // agent-written files are untrusted: never let a browser run them in the app's origin
+    return reply.header('content-type', `${type}; charset=utf-8`).header('x-content-type-options', 'nosniff').header('content-security-policy', 'sandbox; default-src none').header('content-disposition', `inline; filename="${fileName}"`).send(buf);
   });
 
   app.get('/work-items/:id/audit', { schema: { params: IdP, response: { 200: Any } } }, async (req) => {
@@ -265,7 +281,7 @@ export function healthPills(conns: Array<{ type: string; provider: string; displ
     return { label, state: !cs.length ? 'none' : bad ? 'warn' : 'ok', detail: bad?.lastError ?? (cs.length ? 'connected' : 'not connected') };
   };
   void active;
-  return [pill('GitHub', (c) => c.provider === 'github' && c.type === 'forge'), pill('Jira', (c) => c.type === 'tracker'), pill('Claude Code', (c) => ['anthropic', 'bedrock', 'vertex'].includes(c.provider)), pill('Codex', (c) => c.provider === 'openai'), pill('Copilot', (c) => c.provider === 'copilot')];
+  return [pill('GitHub', (c) => c.provider === 'github' && c.type === 'forge'), pill('Jira', (c) => c.type === 'tracker'), pill('Claude Code', (c) => ['anthropic', 'bedrock', 'vertex'].includes(c.provider)), pill('Codex', (c) => c.provider === 'openai'), pill('Copilot', (c) => c.provider === 'copilot'), pill('Cursor', (c) => c.provider === 'cursor')];
 }
 
 export type { Services };

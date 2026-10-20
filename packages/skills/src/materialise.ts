@@ -10,6 +10,7 @@ export const MATERIALISE_TABLE: Record<HarnessType, { skillsDir: string; instruc
   'claude-code': { skillsDir: '.claude/skills', instructions: 'append-system-prompt-file' },
   codex: { skillsDir: '.agents/skills', instructions: 'prompt-prefix' },
   copilot: { skillsDir: '.github/skills', instructions: 'prompt-prefix' },
+  cursor: { skillsDir: '.cursor/skills', instructions: 'prompt-prefix' },
   fake: { skillsDir: '.agents/skills', instructions: 'prompt-prefix' },
 };
 

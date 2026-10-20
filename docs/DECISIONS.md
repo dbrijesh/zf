@@ -48,6 +48,15 @@ One short entry per choice the specification left open, or where this build deli
 
 **D-020 Model prices.** The starter price table is approximate and shown with a warning in Settings. A cost reported by the harness always wins over the table.
 
+**D-021 Cursor harness.** Added from the official Cursor CLI documentation (headless `agent -p ... --output-format stream-json --force --trust`). The binary is `agent` (`cursor-agent` on older installs; `ZF_CURSOR_BIN` overrides both). Skills go in `.cursor/skills`; a per-run `.cursor/cli.json` (deny rules for publishing and secrets) and `.cursor/mcp.json` are an overlay that is removed before the commit. The CLI reports no token counts, so usage is an estimate from text size and cost is left to the price table. Fixtures are synthetic until a real recording replaces them.
+
+**D-022 Run files are an overlay.** Anything the factory writes into the working copy for a run (skills, tool config, MCP config) is restored or removed before the commit, with a journal for crash recovery. This replaces deleting whole skills folders, which removed a repository's own skills.
+
+**D-023 Git credentials per command.** Clones use clean URLs; the token travels in the environment of one git command (`GIT_CONFIG_*`, scoped to the remote's origin). Agent git runs with `GIT_CONFIG_NOSYSTEM`, an empty global config and the factory identity.
+
+**D-024 Dev login is local only by default.** See `docs/CODE_REVIEW.md`, finding 1.
+
+**D-025 Multi-instance safety.** Leases in the `kv` table for periodic work, a partial unique index for open work items per source, and a lock-aware `reconcile`. A work item's clone still lives on one worker's disk (shared storage, or accepting a re-clone on another worker, is the trade-off).
 ## Not done in v1 (as in the spec)
 
 `run_events` is not partitioned by month (a retention job is the next step); benchmarks, self-improvement PRs, Slack/Teams, GitLab/Azure DevOps and the Kubernetes runner backend are listed as "coming soon" or designed for through interfaces (`Forge`, `TrackerClient`, `Sandbox`).

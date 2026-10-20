@@ -1,7 +1,7 @@
-import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, inArray, sql } from 'drizzle-orm';
 import { createHash } from 'node:crypto';
 import {
-  ulid, slugify, notFound, invalid, conflict, forbidden, errMessage, nullLogger, resultJsonSchema, emptyUsage, redactText,
+  ulid, slugify, notFound, invalid, conflict, forbidden, errMessage, isUniqueViolation, nullLogger, resultJsonSchema, emptyUsage, redactText,
   type Logger, type Phase, type HarnessType, type Question, type NormalisedEvent, type Usage, type WorkState, type RunResult,
 } from '@zerovity/core';
 import { tables as t, appendAudit, nextShortId, type Db, type JobQueue, type ArtifactStore, type DbSecrets, SecretResolver, type ExternalSecretsProvider, priceFor, computeCost } from '@zerovity/db';
@@ -30,6 +30,7 @@ const HARNESS_CREDS: Record<HarnessType, { names: string[]; primary: string }> =
   'claude-code': { names: ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_CODE_USE_BEDROCK', 'CLAUDE_CODE_USE_VERTEX', 'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'AWS_SESSION_TOKEN', 'AWS_REGION', 'ANTHROPIC_VERTEX_PROJECT_ID', 'CLOUD_ML_REGION'], primary: 'ANTHROPIC_API_KEY' },
   codex: { names: ['OPENAI_API_KEY', 'CODEX_API_KEY'], primary: 'OPENAI_API_KEY' },
   copilot: { names: ['COPILOT_GITHUB_TOKEN', 'GH_TOKEN'], primary: 'COPILOT_GITHUB_TOKEN' },
+  cursor: { names: ['CURSOR_API_KEY'], primary: 'CURSOR_API_KEY' },
   fake: { names: [], primary: '' },
 };
 
@@ -91,16 +92,25 @@ export class Orchestrator {
     const active = await this.d.defs.getActive(f.id);
     if (!active) throw conflict('This factory has no valid definition yet');
     const actor = i.actor ?? i.requesterId ?? 'system';
-    // the same external issue never creates two work items
-    if (i.source?.ref) {
+    // the same external issue never creates two open work items (the unique index is the real guard; this is the fast path)
+    const findOpenDup = async () => {
+      if (!i.source?.ref) return undefined;
       const [dup] = await this.db.select().from(t.workItems).where(and(eq(t.workItems.factoryId, f.id), eq(t.workItems.sourceType, i.source.type), eq(t.workItems.sourceRef, i.source.ref), inArray(t.workItems.state, ['INTAKE', 'INTENT', 'SPEC', 'AWAITING_SPEC_APPROVAL', 'BUILD', 'VERIFY', 'AWAITING_GATE', 'SHIP', 'AWAITING_HANDOFF', 'NEEDS_INPUT', 'BLOCKED'])));
-      if (dup) return dup;
-    }
+      return dup;
+    };
+    const known = await findOpenDup();
+    if (known) return known;
     const { shortId, seq } = await nextShortId(this.db, f.id);
     const id = ulid();
     const repo = i.repoId ? (await this.db.select().from(t.repositories).where(eq(t.repositories.id, i.repoId)))[0] : (await this.db.select().from(t.repositories).where(eq(t.repositories.factoryId, f.id)).orderBy(asc(t.repositories.createdAt)).limit(1))[0];
     const branch = `zerovity/${shortId.toLowerCase()}-${slugify(i.title, 32)}`;
-    await this.db.insert(t.workItems).values({ id, factoryId: f.id, shortId, seq, title: i.title.trim(), body: i.body ?? '', sourceType: i.source?.type ?? 'web', sourceRef: i.source?.ref ?? null, sourceUrl: i.source?.url ?? null, state: 'INTAKE', repoId: repo?.id ?? null, branch, requesterId: i.requesterId ?? null, budgetUsd: i.budgetUsd ?? active.definition.factory.agentDefaults.budget?.maxCostPerWorkItemUsd ?? null, startPhase: i.startPhase ?? 'auto' });
+    try {
+      await this.db.insert(t.workItems).values({ id, factoryId: f.id, shortId, seq, title: i.title.trim(), body: i.body ?? '', sourceType: i.source?.type ?? 'web', sourceRef: i.source?.ref ?? null, sourceUrl: i.source?.url ?? null, state: 'INTAKE', repoId: repo?.id ?? null, branch, requesterId: i.requesterId ?? null, budgetUsd: i.budgetUsd ?? active.definition.factory.agentDefaults.budget?.maxCostPerWorkItemUsd ?? null, startPhase: i.startPhase ?? 'auto' });
+    } catch (e) {
+      // two deliveries of the same event (a webhook retry, two API instances) raced: the loser returns the winner's item
+      if (isUniqueViolation(e)) { const dup = await findOpenDup(); if (dup) return dup; }
+      throw e;
+    }
     await this.audit(f.id, actor, 'work_item.created', shortId, { title: i.title, source: i.source?.type ?? 'web', sourceRef: i.source?.ref });
     if (i.body?.trim()) await this.db.insert(t.messages).values({ id: ulid(), workItemId: id, authorKind: 'requester', authorId: i.requesterId ?? null, authorName: i.requesterName ?? null, body: i.body.trim(), channel: i.source?.type ?? 'web', externalRef: i.source?.ref ?? null });
     for (const c of i.context ?? []) await this.d.contexts.create(f.orgId, { ...c, layer: 'workItem', scopeId: id }, actor, f.id);
@@ -244,7 +254,7 @@ export class Orchestrator {
     const defaults = active.definition.factory.agentDefaults;
     const agent: ResolvedAgent = { name: agentDef.name, phase: agentDef.fm.phase, role: agentDef.fm.role, body: agentDef.body, skills: eff.skills.map((s) => ({ name: s.name, description: s.description, files: s.files })), outputs: agentDef.fm.outputs, harness: { type: harness.type, model: run.model ?? harness.model, reasoning: harness.reasoning }, mcpServers: agentDef.fm.mcpServers };
     const runnerName = agentDef.fm.runner ?? defaults.runner ?? 'default';
-    const runner = active.definition.runners[runnerName] ?? { description: 'Built-in default runner', image: process.env.ZF_RUNNER_IMAGE ?? 'zerovity-runner-base:latest', setupCommands: [], resources: { cpus: 2, memoryGb: 4 }, network: { egress: 'allowlist' as const, allow: ['github.com', 'api.anthropic.com', 'api.openai.com', 'api.githubcopilot.com', 'registry.npmjs.org'] } };
+    const runner = active.definition.runners[runnerName] ?? { description: 'Built-in default runner', image: process.env.ZF_RUNNER_IMAGE ?? 'zerovity-runner-base:latest', setupCommands: [], resources: { cpus: 2, memoryGb: 4 }, network: { egress: 'allowlist' as const, allow: ['github.com', 'api.anthropic.com', 'api.openai.com', 'api.githubcopilot.com', 'cursor.sh', 'cursor.com', 'cursorapi.com', 'registry.npmjs.org'] } };
 
     // context inputs (the worker assembles after cloning so repo convention files can be included)
     const repoKey = repo ? `${repo.owner}/${repo.name}` : undefined;
@@ -688,6 +698,7 @@ export class Orchestrator {
   async tick(now = new Date()): Promise<{ reminded: number; blocked: number; reaped: number; failedRuns: number }> {
     const out = { reminded: 0, blocked: 0, reaped: 0, failedRuns: 0 };
     out.reaped = await this.d.queue.reapExpired();
+    out.failedRuns = await this.reconcile(0); // runs whose worker stopped heartbeating
     const waiting = await this.db.select().from(t.workItems).where(eq(t.workItems.state, 'NEEDS_INPUT'));
     for (const w of waiting) {
       const active = await this.d.defs.getActive(w.factoryId);
@@ -706,12 +717,20 @@ export class Orchestrator {
     return out;
   }
 
-  /** On startup, runs left 'running' by a dead process are failed so the machine can retry them. */
-  async reconcile(maxAgeMinutes = 0): Promise<number> {
+  /**
+   * Runs left 'running' by a dead process are failed so the machine can retry them. A run whose job is still locked by a live
+   * worker (the lock is extended by heartbeats) is NOT lost, however long it has been running: with several workers a newly
+   * started one must never fail the others' runs. Use ignoreLocks only when this process is the only worker (embedded mode).
+   */
+  async reconcile(maxAgeMinutes = 0, o: { ignoreLocks?: boolean } = {}): Promise<number> {
     const rows = await this.db.select().from(t.runs).where(eq(t.runs.status, 'running'));
     let n = 0;
     for (const r of rows) {
       if (maxAgeMinutes && r.startedAt && Date.now() - r.startedAt.getTime() < maxAgeMinutes * 60_000) continue;
+      if (!o.ignoreLocks) {
+        const [live] = await this.db.select({ id: t.jobs.id }).from(t.jobs).where(and(eq(t.jobs.queue, RUN_QUEUE), eq(t.jobs.state, 'active'), gt(t.jobs.lockedUntil, new Date()), sql`(${t.jobs.payload})->>'runId' = ${r.id}`)).limit(1);
+        if (live) continue;
+      }
       await this.finishRun(r.id, { status: 'failed', exitReason: 'worker_lost' });
       n++;
     }

@@ -1,0 +1,13 @@
+{"type":"system","subtype":"init","apiKeySource":"env","cwd":"/workspace/work","session_id":"c1f0a7de-5b0e-4a63-9a1e-0f6d2f9c7a11","model":"Claude 4 Sonnet","permissionMode":"default"}
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Write hello.txt"}]},"session_id":"c1f0a7de-5b0e-4a63-9a1e-0f6d2f9c7a11"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"I'll read the README first, then create hello.txt."}]},"session_id":"c1f0a7de-5b0e-4a63-9a1e-0f6d2f9c7a11"}
+{"type":"tool_call","subtype":"started","call_id":"call_1","tool_call":{"readToolCall":{"args":{"path":"README.md"}}},"session_id":"c1f0a7de-5b0e-4a63-9a1e-0f6d2f9c7a11"}
+{"type":"tool_call","subtype":"completed","call_id":"call_1","tool_call":{"readToolCall":{"args":{"path":"README.md"},"result":{"success":{"content":"# Demo\nA tiny repo.\n","isEmpty":false,"exceededLimit":false,"totalLines":2,"totalChars":20}}}},"session_id":"c1f0a7de-5b0e-4a63-9a1e-0f6d2f9c7a11"}
+{"type":"tool_call","subtype":"started","call_id":"call_2","tool_call":{"writeToolCall":{"args":{"path":"hello.txt","fileText":"hello\n","toolCallId":"call_2"}}},"session_id":"c1f0a7de-5b0e-4a63-9a1e-0f6d2f9c7a11"}
+{"type":"tool_call","subtype":"completed","call_id":"call_2","tool_call":{"writeToolCall":{"args":{"path":"hello.txt","fileText":"hello\n","toolCallId":"call_2"},"result":{"success":{"path":"/workspace/work/hello.txt","linesCreated":1,"fileSize":6}}}},"session_id":"c1f0a7de-5b0e-4a63-9a1e-0f6d2f9c7a11"}
+{"type":"tool_call","subtype":"started","call_id":"call_3","tool_call":{"shellToolCall":{"args":{"command":"cat hello.txt"}}},"session_id":"c1f0a7de-5b0e-4a63-9a1e-0f6d2f9c7a11"}
+{"type":"tool_call","subtype":"completed","call_id":"call_3","tool_call":{"shellToolCall":{"args":{"command":"cat hello.txt"},"result":{"success":{"exitCode":0,"stdout":"hello\n","stderr":""}}}},"session_id":"c1f0a7de-5b0e-4a63-9a1e-0f6d2f9c7a11"}
+{"type":"tool_call","subtype":"started","call_id":"call_4","tool_call":{"shellToolCall":{"args":{"command":"false"}}},"session_id":"c1f0a7de-5b0e-4a63-9a1e-0f6d2f9c7a11"}
+{"type":"tool_call","subtype":"completed","call_id":"call_4","tool_call":{"shellToolCall":{"args":{"command":"false"},"result":{"failure":{"exitCode":1,"stdout":"","stderr":""}}}},"session_id":"c1f0a7de-5b0e-4a63-9a1e-0f6d2f9c7a11"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"done"}]},"session_id":"c1f0a7de-5b0e-4a63-9a1e-0f6d2f9c7a11"}
+{"type":"result","subtype":"success","duration_ms":5234,"duration_api_ms":5234,"is_error":false,"result":"I'll read the README first, then create hello.txt.done","session_id":"c1f0a7de-5b0e-4a63-9a1e-0f6d2f9c7a11","request_id":"req_1"}

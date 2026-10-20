@@ -51,4 +51,17 @@ export async function kvSet(db: Q, key: string, value: unknown): Promise<void> {
   await db.insert(s.kv).values({ key, value }).onConflictDoUpdate({ target: s.kv.key, set: { value, updatedAt: new Date() } });
 }
 
+/**
+ * Take (or renew) a named lease so that only one process at a time does periodic work (schedules, connection checks, reminders).
+ * Returns true when this owner holds it now. The lease lapses on its own after `ttlMs`, so a dead owner never blocks the others.
+ */
+export async function tryLease(db: Q, name: string, owner: string, ttlMs: number, now = Date.now()): Promise<boolean> {
+  const value = { owner, until: now + ttlMs };
+  const rows = await db.insert(s.kv).values({ key: `lease:${name}`, value }).onConflictDoUpdate({
+    target: s.kv.key, set: { value, updatedAt: new Date() },
+    setWhere: sql`(${s.kv.value}->>'until')::bigint < ${now} or ${s.kv.value}->>'owner' = ${owner}`,
+  }).returning({ key: s.kv.key });
+  return rows.length > 0;
+}
+
 export { errMessage };

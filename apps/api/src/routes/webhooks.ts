@@ -47,7 +47,7 @@ export async function webhookPublicRoutes(app: FastifyInstance, ctx: AppCtx) {
         if (event === 'push' && payload.ref === `refs/heads/${f.definitionRepo!.branch}`) results.push(await syncDefinitionFromGit(s, ctx.forges, f.id));
       }
       const ev = parseWebhook(event, payload);
-      if (ev.type !== 'config_pr') results.push(...(await intake.onForgeEvent(ev)));
+      if (ev.type !== 'config_pr') results.push(...(await intake.onForgeEvent(ev, { orgId: matched.orgId })));
       await log(null, 'github', event, 'processed', JSON.stringify(results).slice(0, 400), raw);
       return reply.code(202).send({ ok: true, results });
     } catch (e) {

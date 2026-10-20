@@ -9,8 +9,8 @@ export type PhaseName = (typeof PHASES)[number] | 'GATE';
 export const phaseVar = (p: string): string => `var(--${p === 'GATE' ? 'gate' : p.toLowerCase()})`;
 export const phaseColor = (p: string): CSSProperties => ({ ['--c' as string]: phaseVar(p) });
 
-export const HARNESS_LABEL: Record<string, string> = { 'claude-code': 'Claude Code', codex: 'Codex', copilot: 'Copilot', fake: 'Offline demo' };
-export const harnessVar = (h: string): string => (h === 'claude-code' ? 'var(--hx1)' : h === 'codex' ? 'var(--hx2)' : h === 'copilot' ? 'var(--hx3)' : 'var(--ink3)');
+export const HARNESS_LABEL: Record<string, string> = { 'claude-code': 'Claude Code', codex: 'Codex', copilot: 'Copilot', cursor: 'Cursor', fake: 'Offline demo' };
+export const harnessVar = (h: string): string => (h === 'claude-code' ? 'var(--hx1)' : h === 'codex' ? 'var(--hx2)' : h === 'copilot' ? 'var(--hx3)' : h === 'cursor' ? 'var(--hx4)' : 'var(--ink3)');
 
 export const fmtMoney = (n: number | null | undefined, digits = 2): string => `$${(n ?? 0).toFixed(digits)}`;
 export const fmtTokens = (n: number): string => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(n >= 1e5 ? 0 : 1)}k` : String(n));

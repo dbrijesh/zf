@@ -2,7 +2,7 @@
 
 A self-hostable software factory. A factory is a team of agents attached to your repositories. Work arrives from a GitHub issue, a Jira ticket, the web composer, the REST API, a webhook, a schedule or a local coding agent (MCP). A foreman moves each work item through **INTENT, SPEC, BUILD, VERIFY, SHIP**, stops for people at defined gates, and ends by handing a pull request with evidence to a person. **Agents never merge.**
 
-Three things drive the design: agents and skills stay small and reusable, people can give the factory context easily at any level, and a strong web UI runs the whole thing. Version 1 runs **Claude Code**, **OpenAI Codex CLI** and **GitHub Copilot CLI**.
+Three things drive the design: agents and skills stay small and reusable, people can give the factory context easily at any level, and a strong web UI runs the whole thing. Version 1 runs **Claude Code**, **OpenAI Codex CLI**, **GitHub Copilot CLI** and **Cursor CLI**.
 
 ## Try it in two minutes (no database, no Docker, no model)
 
@@ -12,11 +12,13 @@ npm run build          # builds the web app
 ZF_SEED=demo ZF_FORCE_HARNESS=fake ZF_DEV_LOGIN=1 npm start
 ```
 
+Dev login lets anyone sign in as any user, so it only starts on a local address (`localhost`). To use a tunnel for webhooks, configure OIDC, or set `ZF_ALLOW_PUBLIC_DEV_LOGIN=1` for a short, supervised trial.
+
 Open http://localhost:8787 and pick a demo user (the approver is `priya@acme.test`). The factory is seeded with two weeks of history and live items driven by the offline `fake` harness, so you can answer a question, attach a file, approve a spec and watch a work item reach handoff. For hot reload use `npm run dev` (web on http://localhost:5173).
 
 ## Use real harnesses
 
-Install the CLIs you want (`claude`, `codex`, `copilot`), then:
+Install the CLIs you want (`claude`, `codex`, `copilot`, `agent` for Cursor), then:
 
 ```
 node apps/cli/bin/zf.mjs doctor
@@ -44,7 +46,7 @@ Production uses OIDC (Entra ID, Okta, Keycloak) and `ZF_DEV_LOGIN=0`. Put the AP
 | `apps/cli` | `zf validate`, `zf skills lint`, `zf pack install` (animated picker), `zf pack lock`, `zf run`, `zf send`, `zf tasks`, `zf audit verify`, `zf schema` |
 | `apps/mcp` | The factory MCP server: `send_task`, `get_task(start_working)`, `message_foreman`, `add_context`, `get_agent_context`, `validate_definition`, `get_schema`, `complete_task`, ... Snippets for Claude Code, Codex and Copilot are in Settings |
 | `examples/` | `01-single-repo` and `02-issue-to-pr` factory definitions |
-| `docs/` | `USER_GUIDE.md` (start here), `CAPABILITIES.md` (everything it can do), `ARCHITECTURE.md`, `architecture.mmd` and `work-item-lifecycle.mmd` (Mermaid diagrams; GitHub renders them), `DECISIONS.md` |
+| `docs/` | `USER_GUIDE.md` (start here), `CAPABILITIES.md` (everything it can do), `CODE_REVIEW.md` (security and correctness findings, all fixed), `ARCHITECTURE.md`, `architecture.mmd` and `work-item-lifecycle.mmd` (Mermaid diagrams; GitHub renders them), `DECISIONS.md` |
 
 ## Commands
 

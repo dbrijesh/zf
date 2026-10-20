@@ -112,7 +112,7 @@ export class GitHubForge implements Forge {
   async cloneAuth(owner: string, name: string) {
     const token = await this.tok();
     const host = new URL(this.app.webBase).host;
-    return { url: `https://x-access-token:${token}@${host}/${owner}/${name}.git` };
+    return { url: `https://${host}/${owner}/${name}.git`, token };
   }
   async openPullRequest(p: { owner: string; name: string; head: string; base: string; title: string; body: string; draft: boolean }) {
     try {
@@ -216,8 +216,8 @@ export function matchMention(body: string, alias?: string | null): boolean {
 }
 /** Label `zerovity` or `zerovity:<alias>`. */
 export function matchLabel(label: string, alias?: string | null, base = 'zerovity'): boolean {
-  const l = label.toLowerCase();
-  return l === base || (!!alias && l === `${base}:${alias.toLowerCase()}`);
+  const l = label.trim().toLowerCase(), b = base.trim().toLowerCase(); // GitHub labels are case-insensitive to people
+  return l === b || (!!alias && l === `${b}:${alias.toLowerCase()}`);
 }
 
 export function parseWebhook(event: string, p: Record<string, any>): ForgeEvent { // eslint-disable-line @typescript-eslint/no-explicit-any
